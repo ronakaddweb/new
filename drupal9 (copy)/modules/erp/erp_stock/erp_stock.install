@@ -1,0 +1,104 @@
+<?php
+
+function erp_stock_install() {
+  drupal_install_schema('erp_stock');
+
+  // The 6001/2/3 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6003 WHERE name = 'erp_stock'");
+}
+
+function erp_stock_schema() {
+  $schema['erp_stock'] = array(
+    'fields' => array(
+      'stock_id' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10'),
+      'stock_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'serial' => array('type' => 'varchar', 'length' => '50', 'not null' => FALSE),
+      'purchase_order_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'receipt_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'receipt_price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'sell_date' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'sell_price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'store_nid' => array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'primary key' => array('stock_id'),
+  );
+
+  $schema['erp_stock_audit'] = array(
+    'fields' => array(
+      'stock_id' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10'),
+      'audit_date' => array('type' => 'datetime', 'not null' => FALSE),
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10')),
+    'indexes' => array(
+      'nid' => array('nid'),
+      'stock_id' => array('stock_id')),
+  );
+
+  return $schema;
+}
+
+function erp_stock_update_6001() {
+  $ret = array();
+
+  // Now look through all the stock and update the erp_receipt_id table with their nid
+  $ret[] = update_sql("ALTER TABLE {erp_stock} ADD COLUMN receipt_nid INT(10) NOT NULL AFTER serial");
+  $result = db_query("SELECT nid, goods_receive_id FROM {erp_goods_receive} ORDER BY goods_receive_id ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_stock} SET receipt_nid = ". $row['nid'] ." WHERE receipt_id = ". $row['goods_receive_id'];
+    $ret[] = update_sql($sql);
+  }
+
+  $ret[] = update_sql("ALTER TABLE {erp_stock} CHANGE stock_id stock_id INT(10) NOT NULL auto_increment");
+
+  $ret[] = update_sql("ALTER TABLE {erp_stock} CHANGE stock_code stock_nid INT(10) NOT NULL");
+
+  $ret[] = update_sql("ALTER TABLE {erp_stock} DROP receipt_id");
+  $ret[] = update_sql("ALTER TABLE {erp_stock} CHANGE store_id store_nid int(10)");
+
+  $ret[] = update_sql("ALTER TABLE {erp_stock} CHANGE COLUMN receipt_price receipt_price FLOAT(20,5) NOT NULL DEFAULT 0");
+  $ret[] = update_sql("ALTER TABLE {erp_stock} CHANGE COLUMN sell_price sell_price FLOAT(20,5) NOT NULL DEFAULT 0");
+
+  $ret[] = update_sql("ALTER TABLE {erp_stock} DROP COLUMN barcode");
+
+  return $ret;
+}
+
+function erp_stock_update_6002() {
+  $ret = array();
+
+  $result = db_query("SELECT stock_id, receipt_nid FROM {erp_stock}");
+
+  while ($row = db_fetch_array($result)) {
+    // Had to put this code from erp_store_get_store() into here,
+    // as sid is not yet changed to store_id, which the function uses.
+    $store = db_result(db_query("SELECT sid FROM {erp_store_link} WHERE nid = '%d'", $row['receipt_nid']));
+
+    if ($store) {
+      $sql = "SELECT nid FROM {erp_store} WHERE sid = %d";
+
+      $nid = db_result(db_query($sql, $store));
+
+      if ($nid) {
+        $ret[] = update_sql("UPDATE {erp_stock} SET store_nid = ". $nid ." WHERE stock_id = ". $row['stock_id']);
+      }
+    }
+  }
+
+  return $ret;
+}
+
+function erp_stock_update_6003() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_stock} ADD COLUMN purchase_order_nid INT(10) UNSIGNED NOT NULL AFTER serial");
+
+  return $ret;
+}
+
+function erp_stock_update_6004() {
+  $ret = array();
+
+  // Add index to make autocomplete faster
+  $ret[] = update_sql("ALTER TABLE {erp_stock} ADD INDEX (stock_nid)");
+
+  return $ret;
+}

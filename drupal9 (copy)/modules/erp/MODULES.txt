@@ -1,0 +1,80 @@
+name = erp
+description = This module provides some basic ERP functionality.
+
+name = erp cart
+description = ERP cart
+
+name = erp cash sale
+description = ERP cash sale module
+
+name = erp contacts
+description = ERP contacts module
+
+name = erp customer
+description = ERP customer module
+
+name = erp email
+description = ERP email helper module
+
+name = erp formfixes
+description = ERP formfixes
+
+name = erp franchise
+description = ERP franchise module
+
+name = erp goods receive
+description = ERP goods receive
+
+name = erp homepage
+description = ERP homepage module
+
+name = erp invoice
+description = ERP invoice module
+
+name = erp item
+description = ERP item module
+
+name = erp job
+description = ERP job module
+
+name = erp payment
+description = ERP payment module
+
+name = erp price list
+description = ERP price list module
+
+name = erp pricing levels
+description = ERP pricing levels module
+
+name = erp print
+description = ERP print module
+
+name = erp purchase order
+description = ERP purchase order module
+
+name = erp quote
+description = ERP quote module
+
+name = erp referral cards
+description = ERP referral cards module
+
+name = erp reports
+description = ERP reports module
+
+name = erp stock
+description = erp stock module
+
+name = erp store
+description = ERP store module
+
+name = erp supplier
+description = ERP supplier module
+
+name = erp timesheet
+description = ERP timesheet module
+
+name = erp warranty
+description = ERP warranty module
+
+name = erp pdf
+description = ERP pdf module

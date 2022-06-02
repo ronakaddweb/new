@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <div id="tem"></div>
+    <script>
+   
+  fetch('https://imdb-api.com/en/API/ComingSoon/k_n9euy627')
+  	.then(res=> res.json())
+  
+  	.then(res=> {
+          console.log(res)
+  	 console.log(res.items);
+  	let a = document.getElementById('tem');
+  		var newmovies="";
+             var b = res.items.length;
+             for(var i=0; i<b; i++){
+                newmovies += `Movie Name: ${res.items[i].title}<br/>`+`Release Date: ${res.items[i].releaseState}<br/>`+`Year: ${res.items[i].year}<br/>`+`Stars: ${res.items[i].stars}<br/>`+`<img src=${res.items[i].image} width=250px height=250px /> <br/> <br/>`;
+             }
+
+            a.innerHTML = newmovies;
+
+            });
+      
+
+  	
+</script>
+  </body>
+</html>

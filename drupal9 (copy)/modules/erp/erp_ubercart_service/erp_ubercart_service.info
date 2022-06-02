@@ -1,0 +1,18 @@
+; $Id: erp_ubercart_service.info,v 1.1.2.3 2010/02/08 07:01:25 simon Exp $
+name = erp ubercart service
+description = This module provides a services interface for erp to talk to ubercart
+package = "ERP"
+core = 6.x
+dependencies[] = services
+dependencies[] = xmlrpc_server
+dependencies[] = services_keyauth
+dependencies[] = node_service
+dependencies[] = system_service
+dependencies[] = user_service
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

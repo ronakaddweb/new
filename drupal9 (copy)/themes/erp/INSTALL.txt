@@ -1,0 +1,75 @@
+
+Basics
+------
+This is erp for drupal 6.x
+
+The install profile has been moved to its own project:
+
+http://drupal.org/project/drupalerp
+
+The notes below are just kept for info at the moment, and will
+probably be removed in the longer term
+
+----------------------------------------------------------------
+
+To utilise the drupal install profile, follow these guidelines, 
+assuming that DRUPAL is the base directory you unzipped the 
+standard drupal archive in:
+
+copy the erp.profile file to DRUPAL/profiles/erp/erp.profile
+copy the rest of the erp files to DRUPAL/sites/all/modules/erp/ 
+or DRUPAL/sites/default/modules/erp/ depending on your local 
+policy.
+
+We also require some extra modules as follows:
+
+http://drupal.org/project/calendar/
+http://drupal.org/project/context/
+http://drupal.org/project/date/
+http://drupal.org/project/gmap/
+http://drupal.org/project/print/
+http://drupal.org/project/quicktabs/
+http://drupal.org/project/views/
+http://drupal.org/project/workflow/
+
+Unzip/Untar these into the DRUPAL/sites/all/modules/ directory, 
+and they will create their own sudirectories. 
+
+There is a script in contrib called get_modules.sh that will 
+do this for you if you are unix/linux/probably mac based.
+
+After all that, the "sites" part of my DRUPAL directory tree 
+looks like this.
+
+.
+|-- all
+|   `-- modules
+|       |-- admin_menu
+|       |-- advanced_help
+|       |-- calendar
+|       |-- cck
+|       |-- context
+|       |-- date
+|       |-- dirtyforms
+|       |-- gmap
+|       |-- jquery_ui
+|       |-- onbeforeunload
+|       |-- print
+|       |-- quicktabs
+|       |-- remember_me
+|       |-- views
+|       `-- workflow
+`-- default
+    |-- files
+    |   `-- js
+    |-- modules
+    |   `-- erp
+    `-- themes
+        `-- erp_theme
+
+The erp_theme is just a copy of the theme directory from the
+erp tarball
+
+And finally, there is an erp specific autocomplete.js to copy 
+into DRUPAL/misc/ which will auto insert prices when creating
+quotes/invoices etc.

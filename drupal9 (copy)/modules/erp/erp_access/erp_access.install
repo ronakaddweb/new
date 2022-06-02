@@ -1,0 +1,17 @@
+<?php
+
+function erp_access_install() {
+  drupal_install_schema('erp_access');
+}
+
+function erp_access_schema() {
+  $schema['erp_access'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '11'),
+      'uid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '11'),
+      'access_type' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '1')
+    ),
+  );
+
+  return $schema;
+}

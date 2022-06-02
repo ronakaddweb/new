@@ -1,0 +1,15 @@
+Index: workflow.module
+===================================================================
+RCS file: /cvs/drupal-contrib/contributions/modules/workflow/workflow.module,v
+retrieving revision 1.52
+diff -u -b -r1.52 workflow.module
+--- workflow.module	11 Nov 2006 20:05:35 -0000	1.52
++++ workflow.module	20 Dec 2006 12:11:02 -0000
+@@ -308,6 +308,7 @@
+     // Write comment into history though.
+     if ($comment) {
+       _workflow_write_history($node, $sid, $comment);
++      $result = module_invoke_all('workflow', 'transition same', $old_sid, $sid, $node);
+     }
+     return;
+   }

@@ -1,0 +1,66 @@
+﻿MariaDB [task3]> select * from Employee;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  2 |      20 | jatin  | 2022-02-20   |     6600 | developer |           10 | IT       |
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
+|  4 |      40 | mradul | 2022-02-20   |    66000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> delete from Employee where Joining_date<'2022-02-2016' and Deot_no in(select Dept_no from Employee where E_job in('clerk', 'manager'));
+ERROR 1054 (42S22): Unknown column 'Deot_no' in 'IN/ALL/ANY subquery'
+MariaDB [task3]> delete from Employee where Joining_Date<'2022-02-2016' and Dept_no in(select Dept_no from Employee where E_job in('clerk', 'manager'));
+Query OK, 0 rows affected, 1 warning (0.001 sec)
+
+MariaDB [task3]> create view vwEmp;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '' at line 1
+MariaDB [task3]> create view as vwEmp ;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'as vwEmp' at line 1
+MariaDB [task3]> create view as vwEmp select * from Employee where E_job = 'developer';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'as vwEmp select * from Employee where E_job = 'developer'' at line 1
+MariaDB [task3]> create view  vwEmp select * from Employee where E_job = 'developer';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'select * from Employee where E_job = 'developer'' at line 1
+MariaDB [task3]> create view  vwEmp as  select * from Employee where E_job = 'developer';
+Query OK, 0 rows affected (0.005 sec)
+
+MariaDB [task3]> select * from vwEpm;
+ERROR 1146 (42S02): Table 'task3.vwEpm' doesn't exist
+MariaDB [task3]> create view  vwEmp as emp select * from Employee where E_job = 'developer';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'emp select * from Employee where E_job = 'developer'' at line 1
+MariaDB [task3]> create view  vwEmp as  select * from Employee where E_job = 'developer';
+ERROR 1050 (42S01): Table 'vwEmp' already exists
+MariaDB [task3]> select * from vwemp;
+ERROR 1146 (42S02): Table 'task3.vwemp' doesn't exist
+MariaDB [task3]> show tables;
++-----------------+
+| Tables_in_task3 |
++-----------------+
+| Employee        |
+| vwEmp           |
++-----------------+
+2 rows in set (0.000 sec)
+
+MariaDB [task3]> select * from vwEmp
+    -> ;
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
+|  2 |      20 | jatin | 2022-02-20   |     6600 | developer |           10 | IT     |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+2 rows in set (0.001 sec)
+
+MariaDB [task3]> select * from vwEmp;
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
+|  2 |      20 | jatin | 2022-02-20   |     6600 | developer |           10 | IT     |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+2 rows in set (0.001 sec)
+
+MariaDB [task3]> 

@@ -1,0 +1,39 @@
+name: Professional Responsive Theme
+type: theme
+description: 'Designed & Developed by <a href=https://www.zymphonies.com>Zymphonies</a><br/>Contact us for any kind of Drupal services <a href=mailto:info@zymphonies.com>info@zymphonies.com</a>'
+package: core
+base theme: false
+core: 8.x
+core_version_requirement: ^8 || ^9
+
+#Libraries
+libraries:
+  - professional_responsive_theme/bootstrap
+  - professional_responsive_theme/fontawesome
+  - professional_responsive_theme/global-components
+
+#Regions
+regions:
+  header: 'Header'
+  primary_menu: 'Primary Menu'
+  slideshow: 'Slideshow'  
+  topwidget_first: 'Top First Widget'
+  topwidget_second: 'Top Second Widget'
+  topwidget_third: 'Top Third Widget' 
+  highlighted: 'Highlighted' 
+  page_title: 'Page Title'
+  breadcrumb: 'Breadcrumb'
+  content: 'Content'
+  sidebar_first: 'Left Sidebar'
+  sidebar_second: 'Right Sidebar' 
+  footer_first: 'Footer First Widget'
+  footer_second: 'Footer Second Widget'
+  footer_third: 'Footer Third Widget'
+  footer_menu: 'Footer Menu'
+  auto_hidden_block: 'Auto hidden blocks'
+  page_top: 'Page top'
+  page_bottom: 'Page bottom'
+# Information added by Drupal.org packaging script on 2020-07-11
+version: '2.0.1'
+project: 'professional_responsive_theme'
+datestamp: 1594486180

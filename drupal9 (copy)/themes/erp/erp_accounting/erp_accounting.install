@@ -1,0 +1,80 @@
+<?php
+
+function erp_accounting_install() {
+  drupal_install_schema('erp_accounting');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6003 WHERE name = 'erp_accounting'");
+}
+
+function erp_accounting_schema() {
+  $schema['erp_accounting'] = array(
+    'fields' => array(
+      'trans_id' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '11'),
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '11'),
+      'trans_date' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '12'),
+      'trans_account' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '11'),
+      'trans_type' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE),
+      'trans_pmt_type' => array('type' => 'int', 'not null' => TRUE, 'disp-width' => '2'),
+      'trans_amt' => array('type' => 'float', 'not null' => TRUE, 'disp-width' => '20')),
+    'primary key' => array('trans_id'),
+    'indexes' => array(
+      'nid' => array('nid')),
+  );
+
+  $schema['erp_accounting_accounts'] = array(
+    'fields' => array(
+      'account_id' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE),
+      'account_name' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE),
+      'account_type' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE),
+      'node_types' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE)),
+    'primary key' => array('account_id'),
+  );
+
+  return $schema;
+}
+
+function erp_accounting_update_6001() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_accounting} CHANGE COLUMN trans_id trans_id int( 11 ) NOT NULL AUTO_INCREMENT");
+  $ret[] = update_sql("ALTER TABLE {erp_accounting} CHANGE COLUMN trans_amt trans_amt FLOAT(20,5) NOT NULL DEFAULT 0");
+
+  // Create temp date field
+  $ret[] = update_sql("ALTER TABLE {erp_accounting} ADD COLUMN trans_date2 INT(12) NOT NULL");
+
+  // Now loop through and update all entries
+  $result = db_query("SELECT * FROM {erp_accounting} ORDER BY trans_date ASC");
+  while ($row = db_fetch_array($result)) {
+    $ret[] = update_sql("UPDATE {erp_accounting} SET trans_date2 = ".  date_convert($row['trans_date'], DATE_DATETIME, DATE_UNIX) ." WHERE trans_id = ". $row['trans_id']);
+  }
+
+  // Now cleanup fields
+  $ret[] = update_sql("ALTER TABLE {erp_accounting} DROP COLUMN trans_date");
+  $ret[] = update_sql("ALTER TABLE {erp_accounting} CHANGE COLUMN trans_date2 trans_date INT(12) NOT NULL");
+
+  return $ret;
+}
+
+function erp_accounting_update_6002() {
+  $ret = array();
+  
+  $result = db_query("SELECT nid, count(trans_id) as the_count FROM {erp_accounting} WHERE trans_type <> 'erp_payment' GROUP BY nid ORDER BY the_count DESC");
+  while ($row = db_fetch_array($result)) {
+    $result2 = db_query("SELECT trans_id FROM {erp_accounting} WHERE nid = %d ORDER BY trans_id ASC LIMIT %d", $row['nid'], ($row['the_count'] - 1));
+    while ($row2 = db_fetch_array($result2)) {
+      $ret[] = update_sql("DELETE FROM {erp_accounting} WHERE trans_id = ". $row2['trans_id']);
+    }
+  }
+  
+  return $ret;
+}
+
+function erp_accounting_update_6003() {
+	$ret = array();
+	
+	variable_set('erp_accounting_default_terms', 7);
+	
+	return $ret;
+}

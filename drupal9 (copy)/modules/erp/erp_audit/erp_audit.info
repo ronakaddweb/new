@@ -1,0 +1,12 @@
+name = erp audit
+description = Provide PC audit functions
+package = "ERP"
+dependencies[] = erp
+; core = 6.x
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

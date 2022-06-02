@@ -1,0 +1,6 @@
+<?php
+
+function erp_install() {
+
+}
+

@@ -1,0 +1,18 @@
+; $Id: erp_stock.info,v 1.7.2.7 2009/12/26 00:22:23 simon Exp $
+name = erp stock
+description = ERP stock module
+package = "ERP"
+dependencies[] = erp
+dependencies[] = erp_item
+dependencies[] = views
+dependencies[] = date_popup
+dependencies[] = date_timezone
+dependencies[] = date_api
+core = 6.x
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

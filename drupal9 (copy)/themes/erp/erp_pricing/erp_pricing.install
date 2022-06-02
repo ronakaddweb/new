@@ -1,0 +1,32 @@
+<?php
+
+function erp_pricing_install() {
+  drupal_install_schema('erp_pricing');
+
+  // Insert some reasonable defaults
+  db_query("INSERT INTO {erp_pricing_levels} (`pid`,`markup`,`level`) VALUES ('1', '1.2', 'Standard')");
+  db_query("INSERT INTO {erp_pricing_levels} (`pid`,`markup`,`level`) VALUES ('2', '1.15', 'Support Contract')");
+  db_query("INSERT INTO {erp_pricing_levels} (`pid`,`markup`,`level`) VALUES ('3', '1.1', 'Reseller')");
+}
+
+function erp_pricing_schema() {
+  $schema['erp_pricing'] = array(
+    'fields' => array(
+      'pid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'indexes' => array(
+      'nid' => array('nid'),
+      'pid' => array('pid')),
+  );
+
+  $schema['erp_pricing_levels'] = array(
+    'fields' => array(
+      'pid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'markup' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'level' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
+    'indexes' => array(
+      'pid' => array('pid')),
+  );
+
+  return $schema;
+}

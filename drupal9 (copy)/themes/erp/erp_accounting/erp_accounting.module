@@ -1,0 +1,579 @@
+<?php
+// $Id: erp_accounting.module,v 1.12.2.17 2010/04/05 02:10:55 simon Exp $
+
+/**
+ * @file
+ *
+ * accounting module
+ *
+ */
+function erp_accounting_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    return t('ERP accounting module.');
+    break;
+  }
+  return NULL;
+}
+
+function erp_accounting_perm() {
+  return array('view erp accounting', 'admin erp accounting');
+}
+
+function erp_accounting_menu() {
+  $items['admin/erp/accounting'] = array(
+    'title' => 'Accounting',
+    'description' => t('Configure erp accounting settings'),
+    'access arguments' => array('admin erp accounting'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_accounting_admin_settings'),
+  );
+
+  $items['admin/erp/accounting/accounts'] = array(
+    'title' => 'Accounts',
+    'description' => t('Configure erp accounts'),
+    'access arguments' => array('admin erp accounting'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_accounting_admin_accounts_settings'),
+  );
+
+  $items['admin/erp/accounting/accounts/add'] = array(
+    'access arguments' => array('admin erp accounting'),
+    'page callback' => 'erp_accounting_admin_accounts_add',
+    'type' => MENU_CALLBACK
+  );
+
+  $items['admin/erp/accounting/accounts/save'] = array(
+    'access arguments' => array('admin erp accounting'),
+    'page callback' => 'erp_accounting_admin_accounts_save',
+    'type' => MENU_CALLBACK
+  );
+
+  $items['admin/erp/accounting/accounts/edit'] = array(
+    'access arguments' => array('admin erp accounting'),
+    'page callback' => 'erp_accounting_admin_accounts_edit',
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/sales'] = array(
+    'title' => 'Sales',
+    'access arguments' => array('view erp accounting'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_accounting_form'),
+  );
+
+  return $items;
+}
+
+/**
+ * Various "hook" functions to to accounting on invoice save and delete
+ */
+function erp_accounting_erp_invoice_save($node) {
+  return erp_accounting_transaction($node);
+}
+
+// TODO This needs to be made consistent between all things that talk accounting speak.
+function erp_accounting_erp_invoice_delete($node) {
+  return erp_accounting_delete($node);
+}
+
+function erp_accounting_erp_cash_sale_save($node) {
+  return erp_accounting_transaction($node);
+}
+
+function erp_accounting_erp_cash_sale_delete($node) {
+  return erp_accounting_delete($node);
+}
+
+function erp_accounting_erp_payment_save($node) {
+  return erp_accounting_transaction((object)$node);
+}
+
+function erp_accounting_erp_payment_delete($node) {
+  return erp_accounting_delete($node);
+}
+
+function erp_accounting_delete($node) {
+  // Clear out old entries for this transaction.
+  // TODO: Should we try and reuse the trans_id?
+  $sql = "DELETE FROM {erp_accounting} WHERE nid = '%d'";
+
+  return db_query($sql, $node->nid);
+}
+
+function erp_accounting_transaction($node) {
+  $amount = $node->total;
+
+  if (!isset($node->payment_date)) {
+    $trans_date = $node->created;
+  }
+  else {
+    $trans_date = $node->payment_date;
+  }
+
+  // All nodes except payment can "update"
+  if ($node->type != 'erp_payment') {
+    $trans_id = db_result(db_query('SELECT trans_id FROM {erp_accounting} WHERE nid = %d', $node->nid));
+  }
+  if ($trans_id) {
+    // Update our transaction object so drupal_write_record understands how to save the data
+    $transaction = array(
+      'trans_id' => $trans_id,
+      'nid' => $node->nid,
+      'trans_date' => $trans_date,
+      'trans_type' => $node->type,
+      'trans_pmt_type' => $node->payment_type,
+      'trans_amt' => $amount,
+    );
+
+    drupal_write_record('erp_accounting', $transaction, array('trans_id'));
+  }
+  else {
+    // Update our transaction object so drupal_write_record understands how to save the data
+    $transaction = array(
+      'nid' => $node->nid,
+      'trans_date' => $trans_date,
+      'trans_type' => $node->type,
+      'trans_pmt_type' => $node->payment_type,
+      'trans_amt' => $amount,
+    );
+
+    drupal_write_record('erp_accounting', $transaction);
+  }
+}
+
+function erp_accounting_form($form_state, $form = NULL) {
+  $start = $form_state['storage']['start_date'];
+  $end = $form_state['storage']['end_date'];
+  $stores = $form_state['storage']['erp_stores'];
+
+  if (!isset($start)) {
+    $start = date_convert(date_now(), DATE_OBJECT, DATE_UNIX);
+  }
+  if (!isset($end)) {
+    $end = date_convert(date_now(), DATE_OBJECT, DATE_UNIX);
+  }
+  if (!isset($stores)) {
+    $stores = array();
+  }
+
+  // If we are dealing with a day only, show the next/prev buttons
+  if (($end - $start) <= 86400) {
+    $form['erp_accounting']['prev'] =
+      array('#type' => 'submit',
+            '#value' => t('Prev day'));
+
+    $form['erp_accounting']['next'] =
+      array('#type' => 'submit',
+            '#value' => t('Next day'));
+  }
+
+  $form['erp_accounting']['start_date'] =
+    array('#type' => 'date_popup',
+          '#title' => t('Start Date'),
+          '#size' => 12,
+          '#date_format' => 'Y-m-d',
+          '#default_value' => date_convert($start, DATE_UNIX, DATE_DATETIME),
+          '#description' => t('YYYY-MM-DD'));
+
+  $form['erp_accounting']['end_date'] =
+    array('#type' => 'date_popup',
+          '#title' => t('End Date'),
+          '#size' => 12,
+          '#date_format' => 'Y-m-d',
+          '#default_value' => date_convert($end, DATE_UNIX, DATE_DATETIME),
+          '#description' => t('YYYY-MM-DD'));
+
+  $form['erp_accounting']['erp_stores'] =
+    array('#type' => 'select',
+          '#title' => 'Store',
+          '#multiple' => TRUE,
+          '#options' => erp_store_list(),
+          '#default_value' => $stores);
+
+  $form['erp_accounting']['display'] =
+    array('#type' => 'submit',
+          '#value' => t('Display'));
+
+  $form['erp_accounting']['others'] = array(
+    '#value' => '<p>'. implode('<br />', array(
+      l('this month', 'sales/bydate', array('query' => 'start_date='. date("Y") ."-$month-1" .'&end_date='. date("Y") ."-$month-31")),
+      l('last month', 'sales/bydate', array('query' => 'start_date='. date("Y") ."-$month-1" .'&end_date='. date("Y") ."-$month-31")),
+      l('this year', 'sales/bydate', array('query' => 'start_date='. date("Y") ."-1-1" .'&end_date='. date("Y") ."-12-31")),
+      l('last year', 'sales/bydate', array('query' => 'start_date='. date("Y") - 1 ."-1-1" .'&end_date='. date("Y") ."-12-31")),
+    )) .'</p>',
+  );
+
+  if ($form_state['storage']['erp_report']) {
+    $form['erp_report'] = $form_state['storage']['erp_report'];
+  }
+  return $form;
+}
+
+
+function erp_accounting_form_submit(&$form, &$form_state) {
+  $edit = $form_state['values'];
+
+  // If no date is specified, default to today.
+  if (!$edit['start_date']) {
+    $start = date_convert(date_format(date_now(), 'Y-m-d'), DATE_DATETIME, DATE_UNIX);
+  }
+  else {
+    $start = date_convert($edit['start_date'], DATE_DATETIME, DATE_UNIX);
+  }
+
+  if (!$edit['end_date']) {
+    $end = date_convert(date_format(date_now(), 'Y-m-d'), DATE_DATETIME, DATE_UNIX) + 86399;
+  }
+  else {
+    $end = date_convert($edit['end_date'], DATE_DATETIME, DATE_UNIX) + 86399;
+  }
+
+  switch ($edit['op']) {
+    case t('Display'):
+      break;
+    case t('Prev day'):
+      $start = $start - 86400;
+      $end = $end - 86400;
+      break;
+    case t('Next day'):
+      $start = $start + 86400;
+      $end = $end + 86400;
+      break;
+    default:
+      break;
+  }
+
+  // Store the dates used for the form
+  $form_state['storage']['start_date'] = $start;
+  $form_state['storage']['end_date'] = $end;
+
+  $erp_stores = erp_store_my_selected_stores($edit['erp_stores']);
+  $form_state['storage']['erp_stores'] = $erp_stores;
+
+  $form_state['storage']['erp_report'] = array(
+    '#value' => erp_accounting_by_payment_type($start, $end, $erp_stores),
+    '#weight' => 20,
+  );
+}
+
+function erp_accounting_by_payment_type($start_date, $end_date, $stores = NULL) {
+  $header = array('Transaction date', 'Transaction id', 'Id', 'Payment type', 'Amount');
+
+  drupal_set_title('Sales Report');
+
+  foreach ($stores as $store_id => $store_name) {
+
+    // Get count of records
+    $sqlcount = "SELECT count(*) FROM {erp_accounting} a LEFT JOIN {erp_store_link} sl ON a.nid = sl.nid WHERE trans_date >= '%s' AND trans_date <= '%s' AND store_id = %d ORDER BY trans_type, trans_date, trans_id ASC";
+    $count = db_result(db_query($sqlcount, $start_date, $end_date, $store_id));
+
+    if ($count > 0) {
+      // Actually do the work.
+      $sql = "SELECT * FROM {erp_accounting} a LEFT JOIN {erp_store_link} sl ON a.nid = sl.nid WHERE trans_date >= '%s' AND trans_date <= '%s' AND store_id = %d ORDER BY trans_type, trans_date, trans_id ASC";
+      $result = db_query($sql, $start_date, $end_date, $store_id);
+
+      $trans_pmt_type = '';
+      $trans_type_total = 0;
+      $trans_total = 0;
+      $rows = array();
+
+      $report_rows = array();
+      $totals = array();
+      $payments = array();
+
+      $i = 0;
+      while ($trans = db_fetch_array($result)) {
+        $trans_date = date_format(date_convert($trans['trans_date'], DATE_UNIX, DATE_OBJECT), 'Y-m-d');
+        $trans_amt = $trans['trans_amt'];
+        $type = substr($trans['trans_type'], 4);
+
+        $report_rows[$trans['trans_type']][$i++] =
+          array($trans_date,
+                $trans['trans_id'],
+                l(erp_nid_to_id($type, $trans['nid']), 'node/'. $trans['nid']),
+                erp_payment_type_desc($trans['trans_pmt_type']),
+                erp_symbol() . erp_currency($trans_amt));
+
+        $totals[$trans['trans_type']] += $trans_amt;
+        if ($trans['trans_pmt_type']) {
+          $payments[$trans['trans_pmt_type']] += $trans_amt;
+        }
+      }
+
+      foreach ($report_rows as $type => $value) {
+        // Get the "nice" name for the node.
+        $type_array = module_invoke($type, 'node_info');
+        $type_name = $type_array[$type]['name'];
+
+        $rows[] = array('Type: '. $type_name, NULL, NULL, NULL, NULL);
+        foreach ($value as $line => $data) {
+          $rows[] = $data;
+        }
+        $rows[] = array(NULL, NULL, NULL, NULL, '<hr>');
+        $rows[] = array('Total: ', NULL, NULL, NULL, erp_symbol() . erp_currency($totals[$type]));
+        $rows[] = array(NULL, NULL, NULL, NULL, '<hr>');
+      }
+
+      if (count($payments)) {
+        $rows[] = array(array('data' => '<hr>', 'colspan' => 6));
+
+        $rows[] = array('Payment breakdown', NULL, NULL, NULL, NULL);
+        foreach ($payments as $type => $amount) {
+          $rows[] = array('Total for '. erp_payment_type_desc($type), NULL, NULL, NULL, erp_symbol() . erp_currency($amount));
+        }
+      }
+
+      $output .= '<p>&nbsp;</p>';
+      $output .= '<div class="erp-accounting-sales-report">';
+      $output .= '<div class="erp-accounting-sales-report-header">';
+      $output .= 'Sales report for: '. $store_name .' - '. date_format(date_convert($start_date, DATE_UNIX, DATE_OBJECT), 'Y-m-d') .' - to - '. date_format(date_convert($end_date, DATE_UNIX, DATE_OBJECT), 'Y-m-d');
+      $output .= '</div>';
+
+      $output .= '<div class="erp-accounting-sales-report-table">';
+      $output .= theme('table', $header, $rows);
+      $output .= '</div>';
+      $output .= '</div>';
+    }
+    else {
+      /*
+       * I cant decide if this shuold be in or not
+       *
+      $output .= '<div class="erp-accounting-sales-report-header">';
+      $output .= 'Sales report for: '. $store_name .' - '. date_format(date_convert($start_date, DATE_UNIX, DATE_OBJECT), 'Y-m-d') .' - to - '. date_format(date_convert($end_date, DATE_UNIX, DATE_OBJECT), 'Y-m-d');
+      $output .= '<div class="erp-accounting-no-sales">';
+      $output .= t('No transactions for @store', array('@store' => $store_name));
+      $output .= '</div>';
+      $output .= '</div>';
+      */
+    }
+  }
+
+  return $output;
+}
+
+function erp_accounting_admin_settings() {
+  drupal_set_title(t('Accounting settings'));
+
+  $form['erp_accounting_default_terms'] = array(
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#title' => t('Default terms if not specified within the customer or store (days).'),
+    '#default_value' => variable_get('erp_accounting_default_terms', 7)
+  );
+
+  $form['erp_accounting_currency_symbol'] = array(
+    '#type' => 'textfield',
+    '#size' => 20,
+    '#maxlength' => 20,
+    '#title' => t('The currency symbol for your country, spaces are brought across, no sprintf'),
+    '#default_value' => variable_get('erp_accounting_currency_symbol', '$ ')
+  );
+
+  $form['erp_accounting_currency_format'] = array(
+    '#type' => 'textfield',
+    '#size' => 20,
+    '#maxlength' => 20,
+    '#title' => t('sprintf is used to format currency, you can tweak the format here'),
+    '#default_value' => variable_get('erp_accounting_currency_format', '%-12.2f')
+  );
+
+  return system_settings_form($form);
+}
+
+function erp_accounting_admin_accounts_settings() {
+  $header = array('Id', 'Name', 'Type', 'Node Types', 'Ops');
+  $rows = array();
+
+  $result = db_query("SELECT * FROM {erp_accounting_accounts}");
+  while ($row = db_fetch_array($result)) {
+    $types = unserialize($row['node_types']);
+    if (is_array($types)) {
+      $types_display = implode(", ", $types);
+    }
+    else {
+      $types_display = '';
+    }
+
+    $rows[] = array($row['account_id'],
+                    $row['account_name'],
+                    $row['account_type'],
+                    $types_display,
+                    l(t('edit'), 'admin/erp/accounting/accounts/edit/'. $row['account_id']) .'&nbsp;'.
+                    l(t('remove'), 'admin/erp/accounting/accounts/remove/'. $row['account_id']));
+  }
+
+  $form['erp_accounting_accounts'] =
+    array('#type' => 'markup',
+          '#value' => theme('table', $header, $rows));
+
+  $form['erp_accounting_accounts_add'] =
+    array('#type' => 'markup',
+          '#value' => l(t('add'), 'admin/erp/accounting/accounts/add/'),
+          '#suffix' => '<br />');
+
+  return system_settings_form($form);
+}
+
+function erp_accounting_admin_accounts_add($account = array()) {
+  $form = erp_accounting_admin_accounts_form($form_state);
+
+  return drupal_get_form('erp_accounting_admin_accounts_form', $form);
+}
+
+function erp_accounting_admin_accounts_form(&$form_state, $account = array()) {
+  $form = array();
+
+  $form['erp_account_info'] =
+    array('#prefix' => '<div class="account-info">',
+          '#type' => 'fieldset',
+          '#title' => 'account info',
+          '#collapsible' => TRUE,
+          '#tree' => TRUE,
+          '#suffix' => '</div>');
+
+  $form['erp_account_info']['account_id'] =
+    array('#type' => 'textfield',
+          '#title' => t('Id'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $account['account_id']);
+
+  $form['erp_account_info']['account_name'] =
+    array('#type' => 'textfield',
+          '#title' => t('Name'),
+          '#size' => 30,
+          '#maxlength' => 30,
+          '#default_value' => $account['account_name']);
+
+  $form['erp_account_info']['account_type'] =
+    array('#type' => 'textfield',
+          '#title' => t('Type'),
+          '#size' => 30,
+          '#maxlength' => 30,
+          '#default_value' => $account['account_type']);
+
+  $form['erp_account_info']['node_types'] =
+    array('#type' => 'select',
+          '#multiple' => TRUE,
+          '#title' => t('Title'),
+          '#options' => array('erp_cash_sale' => 'erp_cash_sale',
+                              'erp_goods_receive' => 'erp_goods_receive',
+                              'erp_invoice' => 'erp_invoice'),
+          '#default_value' => unserialize($account['node_types']));
+
+  if (!$account['account_id']) {
+    $form['erp_account_info']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Add'));
+  }
+
+  return $form;
+}
+
+function erp_accounting_admin_accounts_save() {
+  $edit = $_POST['edit'];
+
+  db_query("REPLACE INTO {erp_accounting_accounts} (account_id, account_name, account_type, node_types) VALUES ('%s', '%s', '%s', '%s')",
+        $edit['erp_account_info']['account_id'],
+        $edit['erp_account_info']['account_name'],
+        $edit['erp_account_info']['account_type'],
+        serialize($edit['erp_account_info']['node_types']));
+
+  drupal_set_message(t('Account Saved'));
+  exit;
+}
+
+function erp_accounting_admin_accounts_edit() {
+  $account_id = arg(5);
+
+  $num_nodes = db_result(db_query("SELECT COUNT(*) FROM {erp_accounting_accounts} WHERE account_id = '%s'", $account_id));
+  if ($num_nodes > 0) {
+    $result = db_query("SELECT * from {erp_accounting_accounts} WHERE account_id = '%s'", $account_id);
+    $account = db_fetch_array($result);
+
+    $form = erp_accounting_admin_accounts_form($form_state, $account);
+
+    $form['erp_account_info']['account_id'] =
+      array('#type' => 'hidden',
+            '#default_value' => $account['account_id']);
+
+    $form['erp_account_info']['submit'] =
+      array('#type' => 'submit',
+            '#value' => t('Save'));
+
+    $form['erp_account_info']['path'] =
+      array('#type' => 'hidden',
+            '#default_value' => $path);
+
+    $form['erp_account_info']['query'] =
+      array('#type' => 'hidden',
+            '#default_value' => $query);
+
+    return $form;
+  }
+  else {
+    // Set error message
+    drupal_set_message(t('Account not found'));
+
+  }
+}
+
+function erp_accounting_get_terms($node) {
+  // Provide default setting
+  $terms = variable_get('erp_accounting_default_terms', 7);
+
+  // If its an invoice, then load the terms from the customer or the store
+  if ($node->type == 'erp_invoice') {
+    // Allow store to overrider default setting
+    if (module_exists('erp_store')) {
+      if ($node->store_id) {
+        $nid = erp_id_to_nid('store', $node->store_id);
+        $store = node_load($nid);
+        if ($store->terms) {
+          $terms = $store->terms;
+        }
+      }
+    }
+
+    // Allow individual customers settings to override store settings
+    if ($node->customer_nid) {
+      $nid = $node->customer_nid;
+      $customer = node_load($nid);
+      if ($customer->terms) {
+        $terms = $customer->terms;
+      }
+    }
+  }
+
+  return $terms;
+}
+
+
+function erp_accounting_views_api() {
+  return array('api' => 2.0);
+}
+
+/**
+ * Provide default currency output.
+ *
+ * @param numeric $amount
+ */
+function erp_currency($amount) {
+  static $format;
+
+  if (!$format) {
+    $format = variable_get('erp_accounting_currency_format', '%-12.2f');
+  }
+  return trim(sprintf($format, $amount));
+}
+
+function erp_symbol() {
+  static $format;
+
+  if (!$format) {
+    $format = variable_get('erp_accounting_currency_symbol', '$ ');
+  }
+  return $format;
+}

@@ -1,0 +1,68 @@
+<?php
+// $Id: erp_tax.module,v 1.9.2.7 2010/02/25 06:02:28 simon Exp $
+
+/**
+ * erp_tax module help fuction
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_tax_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP tax module.');
+      break;
+  }
+  return NULL;
+}
+
+function erp_tax_perm() {
+  return array('access erp tax', 'admin erp tax');
+}
+
+/**
+ * Menu details
+ *
+ */
+function erp_tax_menu() {
+  $items['admin/erp/erp_tax'] = array(
+    'title' => 'Tax',
+    'description' => 'Configure erp tax settings',
+    'access arguments' => array('admin erp tax'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_tax_admin_settings')
+  );
+
+  return $items;
+}
+
+function erp_tax_admin_settings() {
+  drupal_set_title(t('tax settings'));
+
+  $form['erp_tax_rate'] =
+    array('#type' => 'textfield',
+          '#title' => t('Please enter the tax rate (1.1 = 10% tax)'),
+          '#default_value' => variable_get('erp_tax_rate', 1),
+          '#length' => 10);
+
+  return system_settings_form($form);
+}
+
+// Given a tax ex amount, return the amount including tax
+function erp_tax_erp_tax_inc_amount($amt) {
+  $amt = $amt * variable_get('erp_tax_rate', 1);
+  return round($amt, 2);
+}
+
+// Given a tax ex amount, return the amount of tax to be paid
+function erp_tax_erp_tax_amount($amt) {
+  $amt = erp_tax_erp_tax_ex_amount($amt) * (variable_get('erp_tax_rate', 1) - 1);
+  return round($amt, 2);
+}
+
+// Given a tax inc amount, return the tax ex amount
+function erp_tax_erp_tax_ex_amount($amt) {
+  $amt = $amt / variable_get('erp_tax_rate', 1);
+  return round($amt, 2);
+}

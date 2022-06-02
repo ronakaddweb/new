@@ -1,0 +1,17 @@
+<?php
+
+function erp_franchise_install() {
+  drupal_install_schema('erp_franchise');
+}
+
+function erp_franchise_schema() {
+  $schema['erp_franchise'] = array(
+    'fields' => array(
+      'fid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'indexes' => array(
+      'fid' => array('fid')),
+  );
+  return $schema;
+}
+

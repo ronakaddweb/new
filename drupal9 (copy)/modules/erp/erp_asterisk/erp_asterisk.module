@@ -1,0 +1,145 @@
+<?php
+// $id$
+
+function erp_asterisk_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      return t('ERP asterisk module.');
+      break;
+  }
+  return NULL;
+}
+
+function erp_asterisk_perm() {
+  return array('admin erp asterisk');
+}
+
+function erp_asterisk_menu() {
+  $items['admin/erp/asterisk'] = array(
+    'title' => 'Asterisk',
+    'description' => t('Setup connection to asterisk'),
+    'access arguments' => array('admin erp asterisk'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_asterisk_settings'),
+  );
+
+  return $items;
+}
+
+function erp_asterisk_settings() {
+  $form['erp_asterisk_server'] = array(
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#title' => t('Enter the hostname or IP address for your asterisk server'),
+    '#default_value' => variable_get('erp_asterisk_server', ''),
+  );
+
+  $form['erp_asterisk_user'] = array(
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#title' => t('Enter the username for mysql access to your asterisk server'),
+    '#default_value' => variable_get('erp_asterisk_user', ''),
+  );
+
+  $form['erp_asterisk_pass'] = array(
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#title' => t('Enter the password for mysql access to your asterisk server'),
+    '#default_value' => variable_get('erp_asterisk_pass', ''),
+  );
+
+  $form['erp_asterisk_db'] = array(
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#title' => t('Enter the mysql db on your asterisk server, usually asteriskcdrdb'),
+    '#default_value' => variable_get('erp_asterisk_db', ''),
+  );
+
+  return system_settings_form($form);
+}
+
+function erp_asterisk_erp_customer_info($node) {
+  global $db_url;
+
+  $phone_list = array();
+
+  // Build list of possible phone numbers
+  if ($node->phone) {
+    $phone = trim(preg_replace('/[^0-9]/', '', $node->phone));
+    if ($phone) {
+      $phone_list[] = $phone;
+    }
+  }
+
+  if ($node->mobile) {
+    $mobile = trim(preg_replace('/[^0-9]/', '', $node->mobile));
+    if ($mobile) {
+      $phone_list[] = $mobile;
+    }
+  }
+
+  $contact_list = erp_contacts_load($node->nid);
+  foreach ($contact_list as $num => $details) {
+    if ($details['phone']) {
+      $phone = trim(preg_replace('/[^0-9]/', '', $details['phone']));
+      if ($phone) {
+        $phone_list[] = $phone;
+      }
+    }
+    if ($details['mobile']) {
+      $mobile = trim(preg_replace('/[^0-9]/', '', $details['mobile']));
+      if ($mobile) {
+        $phone_list[] = $mobile;
+      }
+    }
+  }
+
+  $phone_list = array_unique($phone_list);
+
+  if (!count($phone_list)) {
+    // No possible records, return empty and disappointed.
+    return;
+  }
+
+  // Select the asterisk server for access
+  if (!is_array($db_url)) {
+    $db_url2['asterisk'] = 'mysql://'. variable_get('erp_asterisk_user', '') .':'. variable_get('erp_asterisk_pass', '') .'@'. variable_get('erp_asterisk_server', '') .'/'. variable_get('erp_asterisk_db', '');
+    $db_url2['default'] = $db_url;
+    $GLOBALS['db_url'] =& $db_url2;
+  }
+
+  // Query the asterisk server
+  if (!db_connect($db_url2['asterisk'])) {
+    db_set_active();
+    watchdog('erp_asterisk', t('Unable to connect to asterisk server with: @details', array('@details' => $db_url2['asterisk'])));
+    return;
+  }
+
+  db_set_active('asterisk');
+
+  $result = db_query("SELECT * FROM {cdr} WHERE src IN(%s) OR dst IN(%s) ORDER by calldate DESC LIMIT 10", implode(",", $phone_list), implode(",", $phone_list));
+
+  // Output results
+  while ($cdr = db_fetch_array($result)) {
+    $row = array($cdr['calldate'], str_replace('"', '', $cdr['clid']), $cdr['src'], $cdr['dst'], sprintf("%02d:%02d", ($cdr['duration'] / 60), ($cdr['duration'] % 60)));
+
+    $rows[] = $row;
+    $row = array();
+  }
+
+  // Return to default mysql server
+  db_set_active();
+
+  if (count($rows)) {
+    $fieldset = array(
+      '#title' => 'Recent phone records',
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+      '#value' => theme('table', array(t('Call date'), t('Caller ID'), t('Destination'), t('Source'), t('Duration')), $rows));
+    return theme('fieldset', $fieldset);
+  }
+}

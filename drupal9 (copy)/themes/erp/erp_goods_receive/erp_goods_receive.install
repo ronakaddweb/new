@@ -1,0 +1,82 @@
+<?php
+
+function erp_goods_receive_install() {
+  drupal_install_schema('erp_goods_receive');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} SET schema_version = 6001 WHERE name = 'erp_goods_receive'");
+}
+
+function erp_goods_receive_schema() {
+  $schema['erp_goods_receive'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'invoice_no' => array('type' => 'varchar', 'length' => '50', 'not null' => FALSE),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'supplier_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'goods_receive_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'purchase_order_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'goods_receive_status' => array('type' => 'char', 'length' => '1', 'not null' => TRUE, 'default' => '')),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'goods_receive_id' => array('goods_receive_id')),
+  );
+
+  $schema['erp_goods_receive_data'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'line' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'item_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'qty' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'serial' => array('type' => 'char', 'length' => '50', 'not null' => TRUE, 'default' => '')),
+    'primary key' => array('nid', 'line'),
+  );
+
+  return $schema;
+}
+
+function erp_goods_receive_update_6001() {
+  $ret = array();
+
+  // Fix goods receive id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} ADD UNIQUE (goods_receive_id)");
+
+  $high_goods_receive = db_result(db_query("SELECT MAX(goods_receive_id) FROM {erp_goods_receive}"));
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} CHANGE COLUMN goods_receive_id goods_receive_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} AUTO_INCREMENT = ". $high_goods_receive++);
+
+  // Now look through all the erp_goods_receive and update the erp_goods_receive_data table with their nid
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive_data} ADD COLUMN nid INT(10) NOT NULL FIRST");
+  $result = db_query("SELECT nid, goods_receive_id FROM {erp_goods_receive} ORDER BY goods_receive_id ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_goods_receive_data} SET nid = ". $row['nid'] ." WHERE goods_receive_id = ". $row['goods_receive_id'];
+    $ret[] = update_sql($sql);
+  }
+
+  // Fix the purchase order data key to no longer require purchase_order_id in the data table
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive_data} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive_data} ADD PRIMARY KEY (nid,line)");
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive_data} DROP goods_receive_id");
+
+  // Add the purchase order id column for the node id
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} CHANGE COLUMN supplier_id supplier_nid INT(10) AFTER customer_id");
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} CHANGE COLUMN customer_id customer_nid INT(10) AFTER invoice_no");
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} ADD COLUMN purchase_order_nid INT(10) AFTER purchase_order_id");
+
+  $result = db_query("SELECT nid, purchase_order_id FROM {erp_goods_receive}");
+  while ($row = db_fetch_array($result)) {
+    $nid = erp_id_to_nid('purchase_order', $row['purchase_order_id']);
+    if ($nid) {
+      $ret[] = update_sql("UPDATE {erp_goods_receive} SET purchase_order_nid = ". $nid ." WHERE nid = ". $row['nid']);
+    }
+  }
+
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive} DROP COLUMN purchase_order_id");
+
+  $ret[] = update_sql("ALTER TABLE {erp_goods_receive_data} CHANGE COLUMN price price FLOAT(20,5) NOT NULL DEFAULT 0");
+  
+  return $ret;
+}

@@ -1,0 +1,111 @@
+<?php
+// $Id: erp_job_billable.module,v 1.9.2.8 2010/02/25 06:02:27 simon Exp $
+
+/**
+ * @file
+ * ERP job billable module integrates workflow and the erp job module
+ * to bill time to a customer.
+ *
+ */
+
+function erp_job_billable_help($path, $arg) {
+  if ($path == 'admin/modules#description') {
+    return t('ERP module to add a billable field to the workflow fields in jobs.');
+  }
+}
+
+function erp_job_billable_perm() {
+	return array('erp job billable edit');
+}
+
+function erp_job_billable_erp_job_link($node) {
+  if (user_access('add invoice')) {
+    $links['erp_invoice_erp_job_billable_link'] =
+      array('title' => t('create invoice'),
+            'href' => 'node/add/erp-invoice/'. $node->nid,
+            'attributes' => array('title' => t('Create an invoice for this job.'))
+      );
+
+    return $links;
+  }
+  return array();
+}
+
+function erp_job_billable_submit($form, $form_state) {
+	global $user;
+
+  $billable_time = $form_state['values']['billable_time'];
+
+  if ($billable_time > 0) {
+  	// This is for when coming from the node form
+    if ($nid = $form_state['values']['nid']) {
+    	// TODO: Set workflow stamp to something here
+    	$workflow_stamp = time();
+	  } // This from the workflow form
+	  else {
+      $nid = $form_state['values']['node']->nid;
+      $workflow_stamp = $form_state['values']['node']->workflow_stamp;
+	  }
+
+    db_query("INSERT INTO {erp_job_billable} (nid, uid, billable_time, stamp) VALUES (%d, %d, %f, %d)", $nid, $user->uid, $billable_time, $workflow_stamp);
+  }
+}
+
+function erp_job_billable_form_alter(&$form, &$form_state, $form_id) {
+	if (user_access('erp job billable edit')) {
+		if ($form['#node']->type == 'erp_job' || $form['node']['#value']->type == 'erp_job') {
+		  if (is_array($form['workflow'])) {
+	      $form['workflow']['job status']['#weight'] = -1;
+
+	      $form['workflow']['billable_time']['#prefix'] = '<br />';
+		  	$form['workflow']['billable_time']['#type'] = 'textfield';
+		    $form['workflow']['billable_time']['#size'] = '5';
+		    $form['workflow']['billable_time']['#weight'] = 0;
+		    $form['workflow']['billable_time']['#title'] = t('Billable time');
+		    $form['workflow']['billable_time']['#description'] = t('The amount of time to bill on this job');
+
+		    $form['workflow']['workflow_comment']['#weight'] = 2;
+
+		    $form['#submit'][] = 'erp_job_billable_submit';
+		  }
+		}
+	}
+}
+
+function erp_job_billable_erp_extra_info($node) {
+  if (module_exists('workflow')) {
+    // Render Workflow log
+    $output = '';
+    $wid = workflow_get_workflow_for_type('erp_job');
+    $states = workflow_get_states($wid) + array(t('(creation)'));
+    $result = db_query("SELECT jb.*, u.name FROM {erp_job_billable} jb LEFT JOIN {users} u ON jb.uid = u.uid WHERE nid = %d ORDER BY stamp ASC", $node->nid);
+
+    $timezone = erp_get_timezone();
+
+    $num_rows = FALSE;
+    $rows = array();
+    while ($billable = db_fetch_object($result)) {
+      $stamp = $billable->stamp + $timezone;
+      $stamp = date_convert($stamp, DATE_UNIX, DATE_DATETIME);
+
+      $rows[] = array(
+        $stamp,
+        check_plain($billable->name),
+        check_plain($billable->billable_time)
+      );
+
+      $num_rows = TRUE;
+    }
+
+    if ($num_rows) {
+      $workflow .= theme('table', array(t('Date'), t('By'), t('Time')), $rows, array('class' => 'erp_job_billable_details'));
+
+      if ($workflow) {
+        $output .= "<strong>Job billable history:</strong>";
+        $output .= $workflow;
+      }
+      return $output;
+    }
+  }
+  return '';
+}

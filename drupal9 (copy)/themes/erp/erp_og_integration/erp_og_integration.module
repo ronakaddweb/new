@@ -1,0 +1,241 @@
+<?php
+// $Id: erp_og_integration.module,v 1.1.4.5 2009/12/26 00:22:22 simon Exp $
+
+/* TODO db_next_id() is gone, and replaced as db_last_insert_id()
+   Since db_next_id() introduce some problems, and the use of this function
+   can be replaced by database level auto increment handling, db_next_id()
+   is now gone and replaced as db_last_insert_id() with help of serial type
+   under Schema API (check out http://drupal.org/node/149176 for more details).
+   Please refer to drupal_write_record() as demonstration. */
+
+/* TODO FormAPI image buttons are now supported.
+   FormAPI now offers the 'image_button' element type, allowing developers to
+   use icons or other custom images in place of traditional HTML submit buttons.
+
+$form['my_image_button'] = array(
+  '#type'         => 'image_button',
+  '#title'        => t('My button'),
+  '#return_value' => 'my_data',
+  '#src'          => 'my/image/path.jpg',
+); */
+
+/* TODO Node previews and adding form fields to the node form.
+   There is a subtle but important difference in the way node previews (and other
+   such operations) are carried out when adding or editing a node. With the new
+   Forms API, the node form is handled as a multi-step form. When the node form
+   is previewed, all the form values are submitted, and the form is rebuilt with
+   those form values put into $form['#node']. Thus, form elements that are added
+   to the node form will lose any user input unless they set their '#default_value'
+   elements using this embedded node object. */
+
+/* TODO New user_mail_tokens() method may be useful.
+   user.module now provides a user_mail_tokens() function to return an array
+   of the tokens available for the email notification messages it sends when
+   accounts are created, activated, blocked, etc. Contributed modules that
+   wish to make use of the same tokens for their own needs are encouraged
+   to use this function. */
+
+/* TODO
+   There is a new hook_watchdog in core. This means that contributed modules
+   can implement hook_watchdog to log Drupal events to custom destinations.
+   Two core modules are included, dblog.module (formerly known as watchdog.module),
+   and syslog.module. Other modules in contrib include an emaillog.module,
+   included in the logging_alerts module. See syslog or emaillog for an
+   example on how to implement hook_watchdog.
+function example_watchdog($log = array()) {
+  if ($log['severity'] == WATCHDOG_ALERT) {
+    mysms_send($log['user']->uid,
+      $log['type'],
+      $log['message'],
+      $log['variables'],
+      $log['severity'],
+      $log['referer'],
+      $log['ip'],
+      format_date($log['timestamp']));
+  }
+} */
+
+/* TODO Implement the hook_theme registry. Combine all theme registry entries
+   into one hook_theme function in each corresponding module file.
+function erp_og_integration_theme() {
+  return array(
+  );
+}; */
+
+
+/* TODO
+   An argument for replacements has been added to format_plural(),
+   escaping and/or theming the values just as done with t().*/
+
+/* TODO You may want to take advantage of new form-specific alter hooks.
+   The hook_form_alter() is complemented by hook_form_$form-id_alter().
+   Optionally, modules can implement form-specific alteration functions rather
+   than a single hook_form_alter() with many conditional switch statements.
+   This is optional, and is most useful for tidying the code of modules that
+   alter many forms to customize a site's operations.
+   The new function names are built using the following format:
+   [your-module-name]_form_[$form_id]_alter. */
+
+/**
+ * @file erp_og_integration.module
+ *
+ * Note: This is NOT a working module yet, but more a place to store the og code I'm
+ * ripping out, which should really become optional, not required.
+ */
+
+function erp_og_integration_erp_customer_add() {
+ global $user;
+
+  $node = '';
+  $node->title = $name;
+  $node->status = 1;
+  $node->uid = $user->uid;
+
+  if (module_exists('erp_franchise')) {
+    $node->name = variable_get('franchise_default', '');
+  }
+
+  $node->type = 'erp_customer';
+  $node->comment = 2;
+
+  $node->og_selective = 1;
+  $node->og_directory = 1;
+  $node->og_description = $name;
+
+  node_save($node);
+
+  $names = explode(',', variable_get('erp_default_og_members_for_customer', ''));
+
+  foreach ($names as $name) {
+    $account = user_load(array('name' => trim($name)));
+    if ($account->uid) {
+      og_save_subscription($node->nid, $account->uid, array('is_active' => 1, 'is_admin' => 1));
+    }
+  }
+
+  $_SESSION['curr_customer'] = $node->nid;
+
+  return drupal_goto('node/'. $node->nid .'/edit');
+}
+
+function erp_og_integration_erp_customer_get_group($node) {
+  // default to the customer node
+  $group = $node->nid;
+
+  return $group;
+}
+
+function erp_og_integration_erp_customer_set_group($node) {
+  // If passed a nid, load the node.
+  if (!is_object($node)) {
+    $node = node_load($node);
+  }
+  if (module_exists('og')) {
+    return $group;
+  }
+}
+
+function erp_og_integration_erp_customer_load_group($node) {
+  //if ($group) {
+  //  $destination = $group;
+  //}
+  //else {
+    $destination = $node;
+  //}
+  drupal_goto('node/'. $destination);
+}
+
+function erp_og_integration_group_get_customer($node) {
+  if (module_exists('og')) {
+    // Try and find a customer from the group
+    $og_groups = $_GET['edit']['og_groups'];
+    if (!isset($og_groups)) {
+      //$og_groups = $node->og_groups;
+      $og_groups = $_SESSION['curr_customer'];
+    }
+    if (is_array($og_groups)) {
+      $gid = array_pop($og_groups);
+    }
+    else {
+      $gid = $og_groups;
+    }
+
+    if ($gid) {
+      $customer = node_load($gid);
+      return $customer->title;
+    }
+
+    return FALSE;
+  }
+
+  // TODO: Handle when og not present
+  return '';
+}
+
+function erp_og_integration_erp_customer_admin_settings() {
+  if (module_exists('og')) {
+    $form =
+      array('erp_default_og_members_for_customer' =>
+            array('#type' => 'textarea',
+                  '#title' => t('Default members for newly created customer groups. All your staff should probably be listed here.'),
+                  '#default_value' => variable_get('erp_default_og_members_for_customer', '')),
+            '#description' => t('This field is usually used to list the named of staff members who will always have access to new customers'));
+  }
+}
+
+function erp_og_integration_erp_formfixes_form_alter(&$form, &$form_state, $form_id) {
+  // Collapse the og choosing group
+  if (is_array($form['og_nodeapi']['visible']['og_groups'])) {
+    $form['og_nodeapi']['#title'] = 'Customer Group Details';
+    $form['og_nodeapi']['visible']['og_groups']['#type'] = 'select';
+    $form['og_nodeapi']['visible']['og_groups']['#multiple'] = TRUE;
+    $form['og_nodeapi']['visible']['og_groups']['#size'] = 5;
+    $form['og_nodeapi']['visible']['og_groups']['#title'] = 'Customer Group';
+
+    $form['og_nodeapi']['#collapsible'] = TRUE;
+    if (count($form['og_nodeapi']['visible']['og_groups']['#default_value']) > 0) {
+      $form['og_nodeapi']['#collapsed'] = TRUE;
+    }
+  }
+}
+
+function erp_og_integration_erp_xxx_access($account) {
+  if ($op == 'view' && user_access('view quotes', $account)) {
+    if (module_exists('og')) {
+      if ($group_node = og_get_group_context()) {
+        $gid = $group_node->nid;
+        if (in_array($gid, array_keys($account->og_groups))) {
+          return TRUE;
+        }
+      }
+    }
+  }
+}
+
+function erp_og_integration_erp_recurring_cron() {
+  // Copy across the group details
+  foreach ($node->og_groups as $dummy => $gid) {
+    $node->og_groups[$gid] = 1;
+  }
+}
+
+function erp_og_integration_views_handler_field_job_customer_name($op, &$query, $argtype, $arg = '') {
+  $node = node_load($arg->nid);
+
+  switch ($op) {
+    default:
+      $customer = node_load($node->customer_nid);
+      if (module_exists('og')) {
+        $group = erp_customer_get_group($customer);
+        if ($group) {
+          return l(shrink($customer->title, 20), 'node/'. $group);
+        }
+        else {
+          return l(shrink($customer->title, 20), 'node/'. $customer->nid);
+        }
+      }
+      else {
+        return l(shrink($customer->title, 20), 'node/'. $customer->nid);
+      }
+  }
+}

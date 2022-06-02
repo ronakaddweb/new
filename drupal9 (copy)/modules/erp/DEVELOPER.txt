@@ -1,0 +1,60 @@
+There are quite a few "hooks" you can use to create your own add-on 
+modules.
+
+Add/update/delete hooks - perform other functions when save/update/delete
+------------------------
+module_invoke_all('erp_cash_sale_delete', $node);
+module_invoke_all('erp_cash_sale_entry', $record);
+module_invoke_all('erp_cash_sale_save', $node);
+module_invoke_all('erp_goods_receive_delete', $node);
+module_invoke_all('erp_goods_receive_entry', $record);
+module_invoke_all('erp_goods_receive_save', $node);
+module_invoke_all('erp_invoice_delete', $node);
+module_invoke_all('erp_invoice_entry', $record);
+module_invoke_all('erp_invoice_save', $node);
+module_invoke_all('erp_job_close');
+module_invoke_all('erp_job_delete', $node);
+module_invoke_all('erp_job_insert', $node);
+module_invoke_all('erp_job_update', $node);
+module_invoke_all('erp_payment_delete');
+module_invoke_all('erp_payment_delete', $payment);
+module_invoke_all('erp_payment_save', $payment);
+module_invoke_all('erp_purchase_order_delete', $node);
+module_invoke_all('erp_purchase_order_save', $node);
+module_invoke_all('erp_quote_delete', $node);
+module_invoke_all('erp_quote_save', $node);
+
+Link hooks - provide a link on the specified module
+-----------
+module_invoke_all('erp_asset_link', $node);
+module_invoke_all('erp_cash_sale_link', $node);
+module_invoke_all('erp_customer_link', $node);
+module_invoke_all('erp_goods_receipt_link', $node);
+module_invoke_all('erp_invoice_link', $node);
+module_invoke_all('erp_item_link', $node);
+module_invoke_all('erp_job_link', $node);
+module_invoke_all('erp_payment_link', $node);
+module_invoke_all('erp_purchase_order_link', $node);
+module_invoke_all('erp_quote_link', $node);
+module_invoke_all('erp_store_link', $node);
+module_invoke_all('erp_timesheet_link', $node);
+module_invoke_all('erp_cart_link', '');
+
+Tax hooks - define these hooks to make your own tax module
+----------
+module_invoke_all('erp_tax_inc_amount', $node->buy_price);
+module_invoke_all('erp_tax_ex_amount', $node->buy_price);
+module_invoke_all('erp_tax_amount', $node->total);
+
+Quickjump hooks - allow you to type "i-45" to load invoice 45
+----------------
+module_invoke_all('erp_quickjump_'. $type, $number);
+
+Info hooks - to add extra information at points in the display of nodes
+---------
+module_invoke_all('erp_quickjump_info');
+module_invoke_all('erp_customer_info', $node);
+module_invoke_all('erp_extra_info', $node);
+module_invoke_all('erp_job_info', $node);
+module_invoke_all('erp_store_info', $node);
+module_invoke_all('erp_supplier_info', $node);

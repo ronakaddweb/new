@@ -1,0 +1,563 @@
+<?php
+// $Id: erp_supplier.module,v 1.19.2.15 2010/03/15 05:05:59 simon Exp $
+
+/**
+ * @file
+ *
+ * Simple module to allow you to associate stock_prices items to a supplier (node).
+ *
+ * Is only used by the supplier module at this stage.
+ */
+
+/**
+ * Supplier help fuction
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_supplier_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP supplier module.');
+      break;
+    case 'node/add#erp_supplier':
+      // This description shows up when users click "create content."
+      return t('ERP supplier.');
+      break;
+  }
+  return NULL;
+}
+
+function erp_supplier_node_name($node) {
+  return t('erp supplier');
+}
+
+function erp_supplier_node_info() {
+  return array(
+    'erp_supplier' => array(
+      'name' => t('erp supplier'),
+      'module' => 'erp_supplier',
+      'description' => t('ERP Supplier module'),
+      'title_label' => t('Supplier name'),
+      'has_body' => TRUE
+    )
+  );
+}
+
+function erp_supplier_perm() {
+  return array('create supplier', 'edit supplier', 'supplier list', 'supplier autocomplete', 'admin supplier');
+}
+
+function erp_supplier_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      return user_access('create supplier', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      return user_access('edit supplier', $account);
+      break;
+
+    case 'view':
+      // Only users with permission to do so may list/view this node type.
+      return user_access('supplier list', $account);
+      break;
+  }
+  return FALSE;
+}
+
+function erp_supplier_link($type, $node = 0, $main) {
+
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_supplier') {
+    $links = array_merge($links, module_invoke_all('erp_supplier_link', $node));
+  }
+
+  return $links;
+}
+
+function erp_supplier_menu() {
+  $items['admin/erp/supplier'] = array(
+    'title' => 'Supplier',
+    'description' => 'Configure erp supplier settings',
+    'access arguments' => array('admin supplier'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_supplier_admin_settings')
+  );
+
+  $items['erp/supplier/autocomplete'] = array(
+    'page callback' => 'erp_supplier_autocomplete',
+    'access arguments' => array('supplier autocomplete'),
+    'type' => MENU_CALLBACK
+  );
+
+  return $items;
+}
+
+
+function erp_supplier_erp_quickjump_s($number) {
+  $nid = erp_id_to_nid('supplier', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Supplier not found');
+    return '';
+  }
+}
+
+function erp_supplier_admin_settings() {
+  $form = array();
+  if (module_exists('filebrowser')) {
+    $form = array_merge($form, array(
+                          'supplier_directory' =>
+                          array('#type' => 'textfield',
+                                '#title' => t('Default directory for supplier docs'),
+                                '#default_value' => variable_get('supplier_directory', ''),
+                                '#description' => t('Directory for supplier docs.'))));
+  }
+
+  if (module_exists('book')) {
+    $form['erp_supplier_doc_create'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Enable automatic creation of supplier documentation for each supplier created'),
+      '#default_value' => variable_get('erp_supplier_doc_create', TRUE)
+    );
+
+    foreach (book_get_books() as $book) {
+      $options[$book['nid']] = $book['title'];
+    }
+
+    $form['erp_supplier_doc_book'] = array(
+      '#type' => 'select',
+      '#title' => t('Book for supplier documentation'),
+      '#default_value' => variable_get('erp_supplier_doc_book', ''),
+      '#options' => $options,
+    );
+
+    $form['erp_supplier_doc_parent'] = array(
+      '#type' => 'select',
+      '#title' => t('Parent item for supplier documenation'),
+      '#default_value' => variable_get('erp_supplier_doc_parent', ''),
+      '#options' => book_toc(variable_get('erp_supplier_doc_book', ''), array(), 2),
+    );
+  }
+
+  $form += erp_set_next_id_form('erp_supplier', 'Supplier');
+
+  return system_settings_form($form);
+}
+
+function erp_supplier_insert($node) {
+  // Create supplier documentation (child book page) as specified in supplier admin
+  if (variable_get('erp_supplier_doc_create', TRUE) && user_access('create book content')) {
+    global $user;
+    $book_page->uid = $user->uid;
+    $book_page->name = $user->name;
+    $book_page->type = 'book';
+    $book_page->book['bid'] = variable_get('erp_supplier_doc_book', '1');
+    $book_page->book['plid'] = variable_get('erp_supplier_doc_parent', '1');
+    $book_page->title = $node->title;
+    $book_page->body = $node->title . t(' Documentation');
+    $book_page->weight = 0;
+    $book_page->status = 1;
+    $book_page->comment = 2;
+    // TODO Need to link book to customer here
+    node_save($book_page);
+
+    $node->documentation = $book_page->nid;
+  }
+
+  drupal_write_record('erp_supplier', $node);
+}
+
+function erp_supplier_update($node) {
+  // Translate the book mlid to a nid
+  $book = book_link_load($node->documentation);
+  $node->documentation = $book['nid'];
+
+  drupal_write_record('erp_supplier', $node, array('nid'));
+}
+
+function erp_supplier_delete($node) {
+  db_query('DELETE FROM {erp_supplier} WHERE nid = %d', $node->nid);
+}
+
+function erp_supplier_load($node) {
+  $additions = db_fetch_object(db_query('SELECT * FROM {erp_supplier} WHERE nid = %d', $node->nid));
+
+  return $additions;
+}
+
+function erp_supplier_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
+  $supplier_types = array('erp_purchase_order', 'erp_item', 'erp_goods_receive');
+
+  if (in_array($node->type, $supplier_types)) {
+    switch ($op) {
+      case 'load':
+        if ($node->supplier_nid) {
+          $supplier_node = node_load($node->supplier_nid);
+          $node->supplier = $supplier_node->title;
+        }
+    }
+  }
+}
+
+/**
+ * Provide the supplier form
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_supplier_form(&$node) {
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => t('Supplier Name'),
+          '#size' => 60,
+          '#maxlength' => 255,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['supplier_details'] =
+    array('#prefix' => '<div class="supplier-details">',
+          '#type' => 'fieldset',
+          '#title' => 'supplier details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->supplier_id) {
+    $form['supplier_details']['supplier_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'supplier id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->supplier_id);
+  }
+
+  $form['supplier_details']['shortname'] =
+    array('#type' => 'textfield',
+          '#title' => t('Short name'),
+          '#size' => 15,
+          '#maxlength' => 15,
+          '#default_value' => $node->shortname);
+
+  $form['supplier_details']['address'] =
+    array('#type' => 'textfield',
+          '#title' => t('Address'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->address);
+
+  $form['supplier_details']['suburb'] =
+    array('#type' => 'textfield',
+          '#title' => t('Suburb'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->suburb);
+
+  $form['supplier_details']['state'] =
+    array('#type' => 'textfield',
+          '#title' => t('State'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $node->state);
+
+  $form['supplier_details']['postcode'] =
+    array('#type' => 'textfield',
+          '#title' => t('Postcode'),
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => $node->postcode);
+
+  $form['supplier_details']['phone'] =
+    array('#type' => 'textfield',
+          '#title' => t('Phone'),
+          '#size' => 10,
+          '#maxlength' => 20,
+          '#default_value' => $node->phone);
+
+  $form['supplier_details']['fax'] =
+    array('#type' => 'textfield',
+          '#title' => t('Fax'),
+          '#size' => 10,
+          '#maxlength' => 20,
+          '#default_value' => $node->fax);
+
+  $form['supplier_details']['mobile'] =
+    array('#type' => 'textfield',
+          '#title' => t('Mobile'),
+          '#size' => 10,
+          '#maxlength' => 20,
+          '#default_value' => $node->mobile);
+
+  $form['supplier_details']['email'] =
+    array('#type' => 'textfield',
+          '#title' => t('Email'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->email);
+
+  $form['supplier_details']['homepage'] =
+    array('#type' => 'textfield',
+          '#title' => t('Homepage'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->homepage);
+
+  if (module_exists('erp_item')) {
+    $form['supplier_details']['lookup_url'] =
+      array('#type' => 'textfield',
+            '#title' => t('Lookup URL'),
+            '#size' => 60,
+            '#maxlength' => 255,
+            '#default_value' => $node->lookup_url);
+  }
+
+  if (module_exists('book')) {
+    if ($node->documentation || !variable_get('erp_supplier_doc_create', FALSE)) {
+      $book = node_load($node->documentation);
+      $form['supplier_details']['documentation'] =
+        array('#type' => 'select',
+              '#title' => t('Documentation'),
+              '#options' => book_toc(variable_get('erp_supplier_doc_book', ''), array(), 2),
+              '#default_value' => $book->book['mlid'],
+              '#description' => t('The documenation for this supplier.'));
+    }
+  }
+
+  return $form;
+}
+
+/**
+ * Handle request to view the supplier
+ *
+ * @param unknown_type $node
+ * @param unknown_type $teaser
+ * @param unknown_type $page
+ */
+function erp_supplier_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_supplier_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function erp_supplier_erp_extra_info($node) {
+  $output = '';
+
+  if ($node->supplier_nid) {
+    $supplier = node_load($node->supplier_nid);
+
+    if ($supplier) {
+      $link = l($supplier->title, 'node/'. $supplier->nid);
+      $output .= '<div class="supplier">';
+      $output .= t('Supplier: ') . $link;
+      $output .= '</div>';
+    }
+  }
+
+  return $output;
+}
+
+function erp_supplier_theme() {
+  return array(
+    'erp_supplier_info' => array(
+      'arguments' => array('node' => NULL)
+    )
+  );
+}
+
+/**
+ * Theme output of supplier info
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function theme_erp_supplier_info($node) {
+  $output = '<div class="supplier-info">';
+
+  $output .= '<div class="supplier-id">';
+  $output .= t('Supplier id: ') . $node->supplier_id;
+  $output .= '</div>';
+
+  $output .= '<div class="shortname">';
+  $output .= t('Shortname: ') . $node->shortname;
+  $output .= '</div>';
+
+  $output .= '<div class="address">';
+  $output .= t('Address: ') . $node->address;
+  $output .= '</div>';
+
+  $output .= '<div class="suburb">';
+  $output .= t('Suburb: ') . $node->suburb;
+  $output .= '</div>';
+
+  $output .= '<div class="state">';
+  $output .= t('State: ') . $node->state;
+  $output .= '</div>';
+
+  $output .= '<div class="postcode">';
+  $output .= t('Postcode: ') . $node->postcode;
+  $output .= '</div>';
+
+  $output .= '<div class="phone">';
+  $output .= t('Phone: ') . $node->phone;
+  $output .= '</div>';
+
+  $output .= '<div class="fax">';
+  $output .= t('Fax: ') . $node->fax;
+  $output .= '</div>';
+
+  $output .= '<div class="mobile">';
+  $output .= t('Mobile: ') . $node->mobile;
+  $output .= '</div>';
+
+  $output .= '<div class="email">';
+  $output .= t('Email: ') . $node->email;
+  $output .= '</div>';
+
+  $output .= implode(module_invoke_all('erp_supplier_info', $node));
+
+  $output .= '<div class="homepage">';
+  $output .= t('Homepage: ') . l($node->homepage, $node->homepage);
+  $output .= '</div>';
+
+  $output .= '<div class="lookup_url">';
+  $output .= t('Lookup URL: ') . l($node->lookup_url, $node->lookup_url);
+  $output .= '</div>';
+
+  $output .= '<div class="documentation">';
+  if (module_exists('book')) {
+    if ($node->documentation) {
+      $book = node_load($node->documentation);
+      $output .= t('Documentation: ') . l($book->title, 'node/'. $book->nid);
+    }
+  }
+  $output .= '</div>';
+
+  if (module_exists('filebrowser')) {
+    $output .= '<div class="filebrowser">';
+    $root = variable_get('filebrowser_root', '');
+    $supp_dir = variable_get('supplier_directory', '');
+    $built_dir = $supp_dir ."/". $node->title;
+    if (is_dir($root ."/". $built_dir)) {
+      $output .= t('Filebrowser: ') . l($node->title, "filebrowser/". $built_dir, array('title' => t('View the customers file based documentation.')));
+    }
+    $output .= '</div>';
+  }
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+/**
+ * Function to provide list of suppliers for autocomplete
+ *
+ * @param unknown_type $string
+ */
+function erp_supplier_autocomplete($string) {
+  $matches = array();
+  $sql = "SELECT title FROM {node} n WHERE n.type = 'erp_supplier' AND LOWER(n.title) LIKE LOWER('%%%s%%') ORDER BY n.title ASC ";
+  $sql = db_rewrite_sql($sql);
+  $result = db_query_range($sql, $string, 0, 25);
+  while ($supplier = db_fetch_object($result)) {
+    $matches[$supplier->title] = check_plain($supplier->title);
+  }
+  print drupal_to_js($matches);
+  exit();
+}
+
+function erp_supplier_get_list() {
+  $matches[] = '<all>';
+  $sql = "SELECT n.title, s.supplier_id FROM {node} n INNER JOIN {erp_supplier} s ON n.nid = s.nid WHERE n.type = 'erp_supplier' ORDER BY n.title ASC ";
+  $sql = db_rewrite_sql($sql);
+  $result = db_query($sql);
+  while ($supplier = db_fetch_object($result)) {
+    $matches[$supplier->supplier_id] = check_plain($supplier->title);
+  }
+  return $matches;
+}
+
+function _erp_supplier_name($supplier_id, $shrink = FALSE) {
+  $supplier = node_load(array('nid' => $supplier_id));
+
+  if ($shrink) {
+    if (strlen($supplier->title) > 22) {
+      return substr($supplier->title, 0, 20) .'..';
+    }
+    else {
+      return ($supplier->title ? $supplier->title : '');
+    }
+  }
+  else {
+    return ($supplier->title ? $supplier->title : '');
+  }
+}
+
+/**
+ * Take a supplier name and return a nid
+ *
+ * @param string $name
+ * @return int $supplier_id
+ */
+function erp_supplier_name_to_node($name) {
+  $node = node_load(array('title' => $name, 'type' => 'erp_supplier'));
+  if ($node) {
+    return $node;
+  }
+  else {
+    watchdog('erp-supplier', 'Supplier not found: '. $name);
+  }
+  return FALSE;
+}
+
+/**
+ * Take a supplier name and return a code
+ *
+ * @param string $name
+ * @return int $supplier_id
+ */
+function erp_supplier_name_to_id($name) {
+  $node = erp_supplier_name_to_node($name);
+  if ($node) {
+    return $node->supplier_id;
+  }
+  else {
+    watchdog('erp-supplier', 'Supplier not found: '. $name);
+  }
+  return FALSE;
+}
+
+/**
+ * Take a supplier code and return a name
+ *
+ * @param int $supplier_id
+ * @return string $supplier_name
+ */
+function erp_supplier_id_to_name($supplier_id) {
+  $nid = erp_id_to_nid('supplier', $supplier_id);
+
+  $node = node_load($nid);
+  if ($node) {
+    return $node->title;
+  }
+  else {
+    watchdog('erp-supplier', 'Supplier not found: '. $supplier_id);
+  }
+  return FALSE;
+}
+
+function erp_supplier_views_api() {
+  return array('api' => 2.0);
+}

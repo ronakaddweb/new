@@ -1,0 +1,87 @@
+<?php
+
+function erp_store_install() {
+  drupal_install_schema('erp_store');
+
+  // The 6001/2 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6003 WHERE name = 'erp_store'");
+}
+
+function erp_store_schema() {
+  $schema['erp_store'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'store_id' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10'),
+      'company' => array('type' => 'varchar', 'length' => '128', 'not null' => FALSE),
+      'tax_id' => array('type' => 'varchar', 'length' => '128', 'not null' => FALSE),
+      'address' => array('type' => 'text', 'not null' => TRUE),
+      'suburb' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'state' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'postcode' => array('type' => 'varchar', 'length' => '12', 'not null' => TRUE, 'default' => ''),
+      'phone' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'fax' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'mobile' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'email' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'homepage' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'documentation' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'bank_details' => array('type' => 'text', 'not null' => FALSE),
+      'terms' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 7),
+      'active' => array('type' => 'int', 'size' => 'tiny', 'not null' => FALSE, 'disp-width' => '1')),
+    'primary key' => array('store_id'),
+    'indexes' => array(
+      'nid' => array('nid')),
+  );
+
+  $schema['erp_store_link'] = array(
+    'fields' => array(
+      'store_id' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'indexes' => array(
+      'store_id' => array('store_id'),
+      'nid' => array('nid')),
+  );
+
+  return $schema;
+}
+
+function erp_store_update_6001() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_store} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_store_link} DROP INDEX sid");
+
+  $ret[] = update_sql("ALTER TABLE {erp_store} CHANGE COLUMN sid store_id INT(10) NOT NULL");
+  $ret[] = update_sql("ALTER TABLE {erp_store_link} CHANGE COLUMN sid store_id INT(10) NOT NULL");
+
+  $ret[] = update_sql("ALTER TABLE {erp_store} ADD PRIMARY KEY (store_id)");
+  $ret[] = update_sql("ALTER TABLE {erp_store_link} ADD INDEX (store_id)");
+  $ret[] = update_sql("ALTER TABLE {erp_store_link} ADD INDEX (nid)");
+
+  $ret[] = update_sql("ALTER TABLE {erp_store} CHANGE COLUMN store_id store_id INT(10) NOT NULL auto_increment");
+
+  // Add active column, and turn it on for everyone
+  //$ret[] = update_sql("ALTER TABLE {erp_store} ADD COLUMN active TINYINT(1) AFTER terms");
+  $ret[] = update_sql("UPDATE {erp_store} SET active = 1");
+
+  return $ret;
+}
+
+function erp_store_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_store} CHANGE COLUMN postcode postcode VARCHAR(12)");
+  $ret[] = update_sql("ALTER TABLE {erp_store} CHANGE COLUMN phone phone VARCHAR(20)");
+  $ret[] = update_sql("ALTER TABLE {erp_store} CHANGE COLUMN fax fax VARCHAR(20)");
+  $ret[] = update_sql("ALTER TABLE {erp_store} CHANGE COLUMN mobile mobile VARCHAR(20)");
+      
+  return $ret;
+}
+
+function erp_store_update_6003() {
+  $ret = array();
+  
+  db_change_field($ret, 'erp_store', 'terms', 'terms', array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 7));
+  
+  return $ret;
+}

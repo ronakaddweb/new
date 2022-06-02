@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
+  <body>
+    <div id="tem"></div><script>
+    
+  // API URL
+  const base = "https://api.stockdata.org/v1/data/quote?symbols=AAPL,TSLA,MSFT&api_token=rgZhi3u1F3R5pMiH0ERm5ovuRGxQW46MOE2aLgDX";
+
+  // Calling the API
+  fetch(base)
+  	.then((data1) => {
+  	return data1.json();
+  	})
+  	.then((data1) => {
+  	 console.log(data1);
+  	let a = document.getElementById('tem');
+  		var stockdata="";
+             var b = data1.data.length;
+             for(var i=0; i<b; i++){
+                 stockdata += `${data1.data[i].name}<br/>`+`${data1.data[i].price}<br/>`+`${data1.data[i].day_high}<br/>`+`${data1.data[i].day_low}`;
+             }
+
+            a.innerHTML = stockdata;
+
+            });
+      
+
+  	
+</script>
+  </body>
+</html>

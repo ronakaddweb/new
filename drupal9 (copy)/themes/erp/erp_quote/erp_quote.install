@@ -1,0 +1,103 @@
+<?php
+
+function erp_quote_install() {
+  drupal_install_schema('erp_quote');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6004 WHERE name = 'erp_quote'");
+}
+
+function erp_quote_schema() {
+  $schema['erp_quote'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'oid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'quote_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'total' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'extra_notes' => array('type' => 'blob', 'not null' => TRUE),
+      'quote_status' => array('type' => 'char', 'length' => '1', 'not null' => TRUE, 'default' => '')
+    ),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'quote_id' => array('quote_id')
+    ),
+  );
+
+  $schema['erp_quote_data'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'line' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'item_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'completed_date' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => '0.00'),
+      'extra' =>  array('type' => 'text', 'size' => 'medium'),
+      'price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'qty' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'serial' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)
+    ),
+    'primary key' => array('nid', 'line'),
+  );
+
+  return $schema;
+}
+
+function erp_quote_update_6001() {
+  $ret = array();
+
+  // Remove hangover from quotes invoice heritage
+  $ret[] = update_sql("ALTER TABLE {erp_quote} DROP payment_status");
+
+  // Fix quote id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_quote} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_quote} ADD UNIQUE (quote_id)");
+
+  $high_quote = db_result(db_query("SELECT MAX(quote_id) FROM {erp_quote}"));
+  $ret[] = update_sql("ALTER TABLE {erp_quote} CHANGE COLUMN quote_id quote_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_quote} AUTO_INCREMENT = ". $high_quote++);
+
+  // Now look through all the quotes and update the erp_quote_data table with their nid
+  $ret[] = update_sql("ALTER TABLE {erp_quote_data} ADD COLUMN nid INT(10) NOT NULL FIRST");
+  $result = db_query("SELECT nid, quote_id FROM {erp_quote} ORDER BY quote_id ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_quote_data} SET nid = ". $row['nid'] ." WHERE quote_id = ". $row['quote_id'];
+    $ret[] = update_sql($sql);
+  }
+
+  // Fix the quote data key to no longer require quote_id in the data table
+  $ret[] = update_sql("ALTER TABLE {erp_quote_data} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_quote_data} ADD PRIMARY KEY (nid,line)");
+  $ret[] = update_sql("ALTER TABLE {erp_quote_data} DROP quote_id");
+  $ret[] = update_sql("ALTER TABLE {erp_quote} CHANGE customer_id customer_nid int(10) NOT NULL");
+
+  $ret[] = update_sql("ALTER TABLE {erp_quote} CHANGE COLUMN total total FLOAT(20,5) NOT NULL DEFAULT 0");
+  $ret[] = update_sql("ALTER TABLE {erp_quote_data} CHANGE COLUMN price price FLOAT(20,5) NOT NULL DEFAULT 0");
+
+  return $ret;
+}
+
+function erp_quote_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_quote} ADD COLUMN quote_status char(1) NOT NULL DEFAULT '0'");
+  $ret[] = update_sql("ALTER TABLE {erp_quote} ADD PRIMARY KEY (`nid`)");
+
+  return $ret;
+}
+
+function erp_quote_update_6003() {
+  $ret = array();
+
+  db_add_field($ret, 'erp_quote_data', 'serial', array('type' => 'varchar', 'length' => '255', 'not null' => FALSE));
+  db_change_field($ret, 'erp_quote', 'comments', 'extra_notes', array('type' => 'blob', 'not null' => TRUE));
+
+  return $ret;
+}
+
+function erp_quote_update_6004() {
+  $ret = array();
+
+  db_change_field($ret, 'erp_quote_data', 'extra', 'extra', array('type' => 'text', 'size' => 'medium'));
+
+  return $ret;
+}

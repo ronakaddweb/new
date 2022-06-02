@@ -1,0 +1,66 @@
+<?php
+
+function erp_cashflow_projection_install() {
+  drupal_install_schema('erp_cashflow_projection');
+}
+
+function erp_cashflow_projection_schema() {
+  $schema['erp_cashflow_projection'] = array(
+    'fields' => array(
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => 11),
+      'payment_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => 11),
+      'payment_time' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => 3),
+    ),
+    'indexes' => array(
+      'customer_nid' => array('customer_nid'),
+      'payment_nid' => array('payment_nid'),
+    )
+  );
+
+  return $schema;
+}
+
+// Update data from all previous payments
+function erp_cashflow_projection_update_6001() {
+  $ret = array();
+
+  // Clear out the table first.
+  db_query("DELETE FROM {erp_cashflow_projection}");
+
+  $result = db_query("SELECT nid FROM {node} WHERE type = 'erp_payment'");
+  while ($row = db_fetch_object($result)) {
+    $payment = node_load($row->nid, NULL, TRUE);
+    if ($payment) {
+      foreach ($payment->invoices as $line) {
+        // Skip payments with no date
+        if ($line['payment_date'] == 0) {
+          continue;
+        }
+
+        // Load the invoice associated
+        $invoice = node_load($line['invoice_nid'], NULL, TRUE);
+        if ($invoice) {
+
+          // Calculate the timeframe
+          $timeframe = intval(($line['payment_date'] - $invoice->created) / 86400);
+
+          // If its a real timeframe...
+          if ($timeframe > 0) {
+
+            // Build our record
+            $cashflow_record = array(
+              'customer_nid' => $invoice->customer_nid,
+              'payment_nid' => $payment->nid,
+              'payment_time' => $timeframe,
+            );
+
+            // Write it out
+            drupal_write_record('erp_cashflow_projection', $cashflow_record);
+          }
+        }
+      }
+    }
+  }
+
+  return $ret;
+}

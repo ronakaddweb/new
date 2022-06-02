@@ -1,0 +1,16 @@
+
+#dirtbike-firewall {
+  margin-bottom: -50px;
+}
+
+h2.node-header {
+  min-height: 20px;
+}
+
+.sidebar .block .content {
+  height: 1%;
+}
+
+.node-content, .comment-content {
+  height: 1%;
+}

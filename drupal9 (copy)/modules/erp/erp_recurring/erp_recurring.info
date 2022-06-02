@@ -1,0 +1,16 @@
+; $Id: erp_recurring.info,v 1.1.4.5 2009/12/26 00:22:22 simon Exp $
+name = erp recurring
+description = "Provides for recurring invoices."
+dependencies[] = erp
+dependencies[] = date_api
+dependencies[] = date_timezone
+dependencies[] = date_popup
+package = "ERP"
+core = 6.x
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

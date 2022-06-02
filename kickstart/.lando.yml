@@ -1,0 +1,4 @@
+name: e-commerce
+recipe: drupal9
+config:
+  webroot: web

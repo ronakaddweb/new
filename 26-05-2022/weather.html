@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	
+</head>
+<body>
+	<div id="tem"></div>
+    
+
+</body>
+</html>
+<script>
+	// API URL
+	const base = "https://api.openweathermap.org/data/2.5/weather?q=Jaipur&appid=807eb64a474d194534d90c09463d5cdf&units=metric";
+
+	// Calling the API
+	fetch(base)
+		.then((res) => {
+		return res.json();
+		})
+		.then((res) => {
+		// console.log(data);
+		let a = document.getElementById('tem');
+			var temperature=""
+		
+		icon1 = res.weather[0].icon;
+
+			temperature += `<img src="http://openweathermap.org/img/w/`+icon1+`.png" style= 'height:80px'/><br/>`+`${res.name}<br/>`+`${res.main.temp}<br/>`+`${res.main.temp_min}<br/>`+`${res.main.temp_max}<br/> `+`${res.main.humidity}`;
+			a.innerHTML = temperature
+		});
+		
+
+</script>
+</body>
+</html>

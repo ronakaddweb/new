@@ -1,0 +1,2 @@
+var person = {"firstName" : "Ronak" , "lastName" : "Jain"};
+alert(person.firstName + " " + person.lastName);

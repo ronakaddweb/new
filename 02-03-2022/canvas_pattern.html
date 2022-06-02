@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+<head>
+<style>
+    body{ background-color:white; }
+    #canvas{border:1px solid red; }
+    
+</style>
+<script>
+window.onload=(function(){
+
+    // canvas related variables
+    var canvas=document.getElementById("canvas");
+    var ctx=canvas.getContext("2d");
+
+    // fill using a pattern
+    var patternImage=new Image();
+    // IMPORTANT! 
+    // Always use .onload to be sure the image has
+    //     fully loaded before using it in .createPattern
+    patternImage.onload=function(){
+        // create a pattern object
+        var pattern = ctx.createPattern(patternImage,'repeat');
+        // set the fillstyle to that pattern
+        ctx.fillStyle=pattern;
+         // fill a rectangle with the pattern
+        ctx.fillRect(50,50,250,200);
+        // demo only, stroke the rect for clarity
+        ctx.strokeRect(50,50,250,200);
+    }
+    patternImage.src='http://i.stack.imgur.com/K9EZl.png';
+
+}); // end window.onload
+</script>
+</head>
+<body>
+    <canvas id="canvas" width=325 height=250></canvas>
+</body>
+</html>

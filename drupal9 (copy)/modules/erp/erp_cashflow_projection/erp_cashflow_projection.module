@@ -1,0 +1,119 @@
+<?php
+// $Id: erp_cashflow_projection.module,v 1.1.2.2 2011/01/14 00:55:03 simon Exp $
+
+/**
+ * @file
+ *
+ * cashflow projection module
+ */
+function erp_cashflow_projection_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      return t('ERP cashflow projection module.');
+      break;
+  }
+  return NULL;
+}
+
+function erp_cashflow_projection_perm() {
+  return array('view erp cashflow projection', 'admin erp cashflow projection');
+}
+
+function erp_cashflow_projection_menu() {
+  $items['admin/erp/cashflow-projection'] = array(
+    'access arguments' => array('admin erp cashflow projection'),
+    'title' => 'Cashflow projection',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_cashflow_projection_admin_settings'),
+  );
+
+  $items['erp/cashflow-projection'] = array(
+    'access arguments' => array('view erp cashflow projection'),
+    'title' => 'Cashflow projection',
+    'page callback' => 'erp_cashflow_projection_list',
+  );
+
+  return $items;
+}
+
+function erp_cashflow_projection_admin_settings() {
+  $form = array();
+
+  return system_settings_form($form);
+}
+
+function erp_cashflow_projection_list() {
+  $output = '';
+  $header = array(t('Days until paid'), t('Age'), t('Avg payment time'), t('Quality'), t('Customer'), t('Invoice'), t('Amount'));
+
+  $result = db_query("SELECT ei.nid FROM {erp_invoice} ei WHERE ei.invoice_status <> 'C'");
+
+  while ($row = db_fetch_object($result)) {
+    $invoice = node_load($row->nid);
+    $customer = node_load($invoice->customer_nid);
+
+    $amount = _erp_payment_get_balance($invoice);
+
+    $timeframe = erp_cashflow_projection_estimate($invoice->customer_nid);
+
+    // FIgure out how old it already is
+    $age = intval((time() - $invoice->created) / 86400);
+    $payment_days = intval($timeframe['paytime'] - $age);
+
+    $row = array($payment_days, $age, intval($timeframe['paytime']), $timeframe['quality'], l($customer->title, 'node/'. $customer->nid), l($invoice->invoice_id, 'node/'. $invoice->nid), erp_symbol() .' '. erp_currency($invoice->total));
+    $timeframe_table[] = $row;
+
+    $total += $amount;
+  }
+
+  $row = array_fill(0, count($header) - 2, array());
+  $row[] = t('Total');
+  $row[] = erp_symbol() .' '. erp_currency($total);
+  $timeframe_table[] = $row;
+
+  asort($timeframe_table);
+
+  $output .= theme('table', $header, $timeframe_table);
+
+  return $output;
+}
+
+/**
+ * Given an invoice, use our data to determine likely number of days until paid
+ * @param unknown_type $invoice
+ */
+function erp_cashflow_projection_estimate($customer_nid) {
+  $result = db_query("SELECT AVG(payment_time) as paytime, COUNT(payment_time) as quality FROM {erp_cashflow_projection} WHERE customer_nid = %d GROUP BY customer_nid ", $customer_nid);
+  $row = db_fetch_array($result);
+  return $row;
+}
+
+function erp_cashflow_projection_customer_extra_info($customer) {
+
+}
+
+function erp_cashflow_projection_erp_payment_save($payment) {
+  // Load the invoice to get the customer id
+  $invoice = node_load($payment['invoice_nid']);
+
+  // Calculate the timeframe
+  $timeframe = intval(($payment['payment_date'] - $invoice->created) / 86400);
+
+  // only store non zero timeframes
+  if ($timeframe > 0) {
+
+    // Build our record
+    $cashflow_record = array(
+      'customer_nid' => $invoice->customer_nid,
+      'payment_nid' => $payment['nid'],
+      'payment_time' => $timeframe,
+    );
+
+    // Write it out
+    drupal_write_record('erp_cashflow_projection', $cashflow_record);
+  }
+}
+
+function erp_cashflow_projection_erp_payment_delete($node) {
+  db_query("DELETE FROM {erp_cashflow_projection} WHERE payment_nid = %d", $node->nid);
+}

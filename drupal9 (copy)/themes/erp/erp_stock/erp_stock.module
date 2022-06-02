@@ -1,0 +1,786 @@
+<?php
+// $Id: erp_stock.module,v 1.13.2.24 2011/01/14 00:55:04 simon Exp $
+
+/**
+ * Stock help function
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_stock_help($path, $arg) {
+  switch ($page) {
+  case 'admin/modules#description':
+    return t('ERP stock module.');
+    break;
+  case 'node/add#erp_stock':
+    return t('ERP stock');
+    break;
+  }
+  return NULL;
+}
+
+function erp_stock_perm() {
+  return array('stock edit',
+               'stock list',
+               'stock import',
+               'stock wholesale',
+               'stock cart',
+               'stock adjust',
+               'admin stock');
+}
+
+/**
+ * Setup menus
+ */
+function erp_stock_menu() {
+  $items['admin/erp/stock'] = array(
+    'title' => 'Stock',
+    'description' => 'Configure erp stock settings',
+    'access arguments' => array('admin stock'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_stock_admin_settings')
+  );
+
+  $items['erp/stock'] = array(
+    'title' => 'Stock',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_stock_list_form'),
+    'access arguments' => array('stock list')
+  );
+
+  $items['erp/stock/%'] = array(
+    'title' => 'Stock list',
+    'page callback' => 'erp_stock_list_by_store',
+    'page arguments' => array(2),
+    'access arguments' => array('stock list'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/%/%'] = array(
+    'title' => 'Stock list',
+    'page callback' => 'erp_stock_list_by_store',
+    'page arguments' => array(2, 3),
+    'access arguments' => array('stock list'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/cart'] = array(
+    'title' => 'Stock add to cart',
+    'page callback' => 'erp_stock_add_to_cart',
+    'access arguments' => array('stock cart'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/cart_confirm'] = array(
+    'title' => 'stock add to cart',
+    'page callback' => 'erp_stock_confirm_add_to_cart',
+    'access arguments' => array('stock cart'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/add/%'] = array(
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_stock_add_form', 3),
+    'access arguments' => array('stock adjust'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/edit/%/%'] = array(
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_stock_edit_form', 3, 4),
+    'access arguments' => array('stock adjust'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/delete/%/%'] = array(
+    'page callback' => 'erp_stock_delete',
+    'page arguments' => array(3, 4),
+    'access arguments' => array('stock adjust'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/sold/%/%'] = array(
+    'page callback' => 'erp_stock_sold',
+    'page arguments' => array(3, 4),
+    'access arguments' => array('stock adjust'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/unsold/%/%'] = array(
+    'page callback' => 'erp_stock_unsold',
+    'page arguments' => array(3, 4),
+    'access arguments' => array('stock adjust'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/stock/sales'] = array(
+    'title' => 'List sales',
+    'page callback' => 'erp_stock_list_sales',
+    'access arguments' => array('stock list'),
+    'type' => MENU_CALLBACK
+  );
+
+  return $items;
+}
+
+function erp_stock_list_sales() {
+  $nid = arg(3);
+
+  $result = db_query("SELECT i.nid, i.invoice_id, i.customer_nid, i.invoice_status, i.total, id.price, id.qty, n.created FROM {erp_invoice_data} id INNER JOIN {erp_invoice} i ON id.nid = i.nid INNER JOIN {node} n ON n.nid = i.nid WHERE item_nid = %d ORDER by invoice_id DESC", $nid);
+
+  while ($row = db_fetch_object($result)) {
+    $customer = node_load($row->customer_nid);
+    $rows[] = array(array('data' => l($row->invoice_id, 'node/'. $row->nid),
+                          'class' => 'erp-invoice-title'),
+                    array('data' => format_date($row->created, 'custom', 'd-m-Y'),
+                          'class' => 'erp-invoice-date'),
+                    array('data' => l($customer->title, 'node/'. $row->customer_nid),
+                          'class' => 'erp-customer-title'),
+                    array('data' => $row->invoice_status,
+                          'class' => 'erp-invoice-status'),
+                    array('data' => $row->qty,
+                          'class' => 'erp-qty'),
+                    array('data' => $row->price,
+                          'class' => 'erp-invoice-price'),
+                    array('data' => $row->total,
+                          'class' => 'erp-invoice-total'));
+  }
+
+  $header = array(t('Invoice'), t('Date'), t('Customer'), t('Paid'), t('Qty'), t('Each'), t('Invoice Total'));
+
+  $output = theme('table', $header, $rows);
+
+  return $output;
+}
+
+function erp_stock_add_to_cart($form_state) {
+  global $base_path;
+
+  $nid = arg(2);
+  $popup = (arg(3) == "popup" ? TRUE : FALSE);
+
+  $source = parse_url($_SERVER['HTTP_REFERER']);
+  $path = $source['path'];
+  $new_base = substr(substr($base_path, 1), 0, -1);
+  $path = str_replace($base_path, '', $path);
+  $query = $source['query'];
+
+  $node = node_load($nid);
+
+  $form['#action'] = url('erp/stock/cart_confirm');
+
+  $form['stock_add_to_cart']['nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->nid);
+
+  $form['stock_add_to_cart']['popup'] =
+    array('#type' => 'hidden',
+          '#default_value' => $popup);
+
+  $form['stock_add_to_cart']['title'] =
+    array('#type' => 'textfield',
+          '#title' => t('Stock Description'),
+          '#size' => 60,
+          '#maxlength' => 255,
+          '#default_value' => $node->title);
+
+  $form['stock_add_to_cart']['price'] =
+    array('#type' => 'textfield',
+          '#title' => t('Price'),
+          '#size' => 10,
+          '#default_value' => $node->rrp_price);
+
+  $form['stock_add_to_cart']['qty'] =
+    array('#type' => 'textfield',
+          '#title' => t('Quantity to add to cart'),
+          '#size' => 10,
+          '#default_value' => 1);
+
+  $form['stock_add_to_cart']['extra'] =
+    array('#type' => 'textarea',
+          '#title' => t('Extra Text'),
+          '#default_value' => '');
+
+  $form['item_add_to_cart']['path'] =
+    array('#type' => 'hidden',
+          '#default_value' => $path);
+
+  $form['item_add_to_cart']['query'] =
+    array('#type' => 'hidden',
+          '#default_value' => $query);
+
+  $form['stock_add_to_cart']['submit'] =
+    array('#type' => 'submit',
+          '#value' => t('Add to cart'));
+
+  $form = drupal_get_form('stock_add_to_cart', $form);
+
+  if ($popup) {
+    global $base_url;
+    $base_url .= '/';
+
+    $output = "<html>\n<head>\n<base href=\"$base_url\" />\n";
+    $output .= drupal_get_html_head();
+    $output .= theme_get_styles();
+    $output .= "</head>\n<body style=\"padding: 5px;\"><div id=\"content\" class=\"content-both\"><div id=\"content-wrap\" class=\"content-wrap-both\">\n";
+    $output .= $form;
+    $output .= '</div></div></body></html>';
+
+    print $output;
+    exit;
+  }
+  else {
+    return $form;
+  }
+}
+
+function erp_stock_confirm_add_to_cart() {
+  $nid = $_POST['edit']['nid'];
+  $qty = $_POST['edit']['qty'];
+  $title = $_POST['edit']['title'];
+  $extra = $_POST['edit']['extra'];
+  $path = $_POST['edit']['path'];
+  $query = $_POST['edit']['query'];
+
+  $popup = $_POST['edit']['popup'];
+
+  //$output = 'Node: '. $nid .' Quantity: '. $qty;
+
+  erp_cart_add_item($_SESSION['curr_customer'], array('nid' => $nid, 'qty' => $qty, 'title' => $title, 'extra' => $extra));
+
+  $node = node_load($nid);
+
+  drupal_set_message(t('Added: ') . $qty . t(' x ') . l($node->title, 'node/'. $nid) . t(' to cart.'));
+
+  if (!$popup) {
+    if ($path) {
+      drupal_goto($path, $query);
+    }
+    else {
+      drupal_goto('stock');
+    }
+  }
+  else {
+    print "<SCRIPT LANGUAGE=\"javascript\">window.close()</SCRIPT>";
+  }
+
+  exit;
+}
+
+function erp_stock_admin_settings() {
+  $form['stock_popup'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Popup the "add to cart" form in a window?'),
+          '#default_value' => variable_get('stock_popup', ''));
+
+  return system_settings_form($form);
+}
+
+// Called from goods_receive, refund modules
+function erp_stock_erp_goods_receive_entry($record) {
+  // $record['nid'], $record['price'], $record['serial']
+  $item = node_load($record['item_nid']);
+
+  if ($item->type == 'erp_item') {
+    // OK, stock record is different from goods receive record, need to do some re-jigging
+    $line = array(
+      'stock_nid' => $record['item_nid'],
+      'serial' => $record['serial'],
+      'receipt_nid' => $record['receipt_nid'],
+      'purchase_order_nid' => $record['purchase_order_nid'],
+      'receipt_price' => $record['price'],
+      'store_nid' => $record['store_nid'],
+    );
+    drupal_write_record('erp_stock', $line);
+    erp_stock_check_update_in_stock($line['stock_nid']);
+  }
+
+  return TRUE;
+}
+
+// Called from invoice module
+function erp_stock_erp_invoice_entry($record) {
+  erp_stock_reduce($record);
+
+  return TRUE;
+}
+
+// Called from cash sale module
+function erp_stock_erp_cash_sale_entry($record) {
+  erp_stock_reduce($record);
+
+  return TRUE;
+}
+
+// Called from cash_sale, invoice modules
+function erp_stock_erp_invoice_delete($node) {
+  erp_stock_increase($node);
+
+  return TRUE;
+}
+
+// Called from cash_sale, invoice modules
+function erp_stock_erp_cash_sale_delete($node) {
+  erp_stock_increase($node);
+
+  return TRUE;
+}
+
+/**
+ * Reduce stock after a sale has occurred
+ * @param $record
+ */
+function erp_stock_reduce($record) {
+  $item_node = node_load($record['stock_code']);
+  if ($item_node->item_type == 'stock item') {
+    if (variable_get('erp_invoice_serial', FALSE) && $record['serial']) {
+      db_query("UPDATE {erp_stock} SET sell_date = '%d', sell_price = '%f' WHERE stock_nid = %d AND sell_date = 0 AND serial = '%s' LIMIT %d", $record['sell_date'], $record['sell_price'], $record['stock_code'], $record['serial'], $record['qty']);
+    }
+    else {
+      db_query("UPDATE {erp_stock} SET sell_date = '%d', sell_price = '%f' WHERE stock_nid = %d AND sell_date = 0 LIMIT %d", $record['sell_date'], $record['sell_price'], $record['stock_code'], $record['qty']);
+    }
+  }
+  erp_stock_check_update_in_stock($record['stock_code']);
+}
+
+/**
+ * Increase stock if a sale/invoice is deleted
+ * @param $node
+ */
+function erp_stock_increase($node) {
+  for ($i = 0; $i < count($node->entries['qty']); $i++) {
+    $item_node = node_load($node->entries['item'][$i]);
+    if ($item_node->item_type == 'stock item') {
+      if (!empty($node->entries['qty'][$i]) and !empty($node->entries['item_desc'][$i])) {
+        if (variable_get('erp_invoice_serial', FALSE)  && $node->entries['serial'][$i]) {
+          db_query("UPDATE {erp_stock} SET sell_date = 0, sell_price = 0 WHERE stock_nid = %d AND serial = '%s' LIMIT %d", $node->entries['item'][$i], $node->entries['serial'][$i], $node->entries['qty'][$i]);
+        }
+        else {
+          // TODO: Oooer, this is nasty, it needs to use the stock_id or something,
+          // or it can make old stock available again. It could match on the sale date perhaps
+          db_query("UPDATE {erp_stock} SET sell_date = 0, sell_price = 0 WHERE stock_nid = %d AND sell_date <> 0 LIMIT %d", $node->entries['item'][$i], $node->entries['qty'][$i]);
+        }
+      }
+    }
+    erp_stock_check_update_in_stock($node->entries['item'][$i]);
+  }
+}
+
+function erp_stock_check_update_in_stock($nid) {
+  if (erp_stock_avail($nid)) {
+    db_query("UPDATE {erp_item} SET in_stock = 1, active = 1 WHERE nid = %d", $nid);
+  }
+  else {
+    db_query("UPDATE {erp_item} SET in_stock = 0 WHERE nid = %d", $nid);
+  }
+}
+
+function erp_stock_avail($nid) {
+  $sql = "SELECT count(*) as instock FROM {erp_stock} WHERE stock_nid = %d AND sell_date = 0";
+
+  $result = db_query($sql, $nid);
+  if ($row = db_fetch_array($result)) {
+    return $row['instock'];
+  }
+  return FALSE;
+}
+
+function views_handler_field_stock_add_to_cart($form_state, $op, &$query, $argtype, $arg = '') {
+  return erp_stock_cart_link($arg);
+}
+
+function views_handler_field_stock_avail($op, &$query, $argtype, $arg = '') {
+  return erp_stock_avail($arg->nid);
+}
+
+function erp_stock_cart_link($node) {
+  if (variable_get('stock_popup', FALSE) == TRUE) {
+    $links['erp_stock_cart_link'] =
+      array('title' => t('cart'),
+            'href' => 'erp/stock/cart/'. $node->nid .'/popup',
+            'attributes' => array('onclick' => "window.open(this.href, 'add to cart', 'width=480,height=320,scrollbars=no,status=no'); return false"));
+  }
+  else {
+    $links['erp_stock_cart_link'] =
+      array('title' => t('cart'),
+            'href' => 'erp/stock/cart/'. $node->nid);
+  }
+
+  return $links;
+}
+
+function erp_stock_erp_cash_sale_save($node) {
+
+}
+
+function erp_stock_erp_invoice_save($node) {
+
+}
+
+function erp_stock_audit_insert($stock_id, $nid) {
+  $audit_date = date('Y-m-d H:m:s');
+
+  db_query("INSERT INTO {erp_stock_audit} (stock_id, audit_date, nid) VALUES (%d, '%s', %d)", $stock_id, $audit_date, $nid);
+}
+
+function erp_stock_list_form($form_state, $form = NULL) {
+  $form['store_id'] = array(
+    '#type' => 'select',
+    '#title' => t('Store'),
+    '#options' => erp_store_list(FALSE),
+    '#default_value' => '',
+    '#weight' => -1
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit')
+  );
+
+  $form['print'] = array(
+    '#type' => 'submit',
+    '#value' => t('Print')
+  );
+
+  return $form;
+}
+
+// As "stock" isn't actually a 'node' type, it needs to have a custom
+// view/list as the "views" module doesn't yet support views that are
+// not related to nodes.
+function erp_stock_list_form_submit(&$form, &$form_state) {
+  $edit = $form_state['values'];
+
+  switch ($edit['op']) {
+    case t('Submit'):
+      drupal_goto('erp/stock/'. $edit['store_id']);
+      break;
+    case t('Print'):
+      drupal_goto('erp/stock/'. $edit['store_id'] .'/print');
+      break;
+  }
+}
+
+function erp_stock_list_by_store($store_id, $destination = 'screen') {
+  $store_nid = erp_id_to_nid('store', $store_id);
+  $store = node_load($store_nid);
+
+  // TODO: We need a way to search by serial number
+  $header = array(
+    array('data' => t('supplier'), 'field' => 'sp.shortname'),
+    array('data' => t('stock code'), 'field' => 'i.code'),
+    array('data' => t('description'), 'field' => 'n.title'),
+    array('data' => t('serial'), 'field' => 's.serial'),
+    array('data' => t('sell price'), 'field' => 'i.sell_price'),
+    array('data' => t('buy price'), 'field' => 's.receipt_price'),
+  );
+
+  $sql = "SELECT sp.shortname, i.code, s.serial, n.title, i.sell_price, s.receipt_price, s.stock_nid FROM {erp_stock} s INNER JOIN {node} n ON s.stock_nid = n.nid INNER JOIN {erp_item} i ON s.stock_nid = i.nid INNER JOIN {erp_supplier} sp ON sp.nid = i.supplier_nid WHERE s.sell_date = 0 AND s.store_nid = %d".
+  tablesort_sql($header);
+
+  if ($destination == 'print') {
+    drupal_add_css(drupal_get_path('module', 'erp_stock') .'/erp_stock.css');
+    $result = db_query($sql, $store_nid);
+  }
+  else {
+    $result = pager_query($sql, 50, 0, NULL, $store_nid);
+  }
+
+  $sell_total = 0;
+  $buy_total = 0;
+
+  while ($stock = db_fetch_object($result)) {
+    $row = array(
+      'data' =>
+      array(
+        $stock->shortname,
+        l($stock->code, 'node/'. $stock->stock_nid),
+        $stock->title,
+        $stock->serial,
+        erp_currency($stock->sell_price),
+        erp_currency($stock->receipt_price)
+      ),
+      'class' =>
+        'stock-record',
+      );
+    $sell_total += $stock->sell_price;
+    $buy_total += $stock->receipt_price;
+    if ($destination == 'print') {
+      // Output a checkbox
+      array_unshift($row['data'], '<div class="checkbox"></div>');
+    }
+    $rows[] = $row;
+  }
+
+  if (!$rows) {
+    $rows[] = array(array('data' => t('No stock records available.'), 'colspan' => count($header)));
+  }
+  else {
+    if ($destination == 'print') {
+      $row = array_fill(0, (count($header) + 1) - 2, array());
+    }
+    else {
+      $row = array_fill(0, count($header) - 2, array());
+    }
+    $row[] = array('data' => erp_symbol() . erp_currency($sell_total));
+    $row[] = array('data' => erp_symbol() . erp_currency($buy_total));
+    $rows[] = $row;
+  }
+
+  if ($destination != 'print') {
+    $pager = theme('pager', NULL, 50, 0);
+    if (!empty($pager)) {
+      $rows[] = array(array('data' => $pager, 'colspan' => count($header)));
+    }
+  }
+  else {
+    array_unshift($header, t('Checkbox'));
+  }
+
+  $output = drupal_get_form('erp_stock_list_form');
+
+  $output .= '<p><div class="stock-list-header">Stock list for <strong>'. $store->title .'</strong></div></p>';
+
+  $output .= theme('table', $header, $rows);
+
+  if ($destination == 'print') {
+    return $output;
+  }
+  return $output;
+}
+
+function erp_stock_list_avail($nid) {
+  $sql = "SELECT * FROM {erp_stock} e INNER JOIN {erp_item} i ON e.stock_nid = i.nid INNER JOIN {node} n ON e.stock_nid = n.nid WHERE stock_nid = %d AND sell_date = 0";
+
+  $result = db_query($sql, $nid);
+  $num_rows = FALSE;
+  while ($stock = db_fetch_object($result)) {
+    $stock_list[$stock->serial] = $stock->code .' - '. $stock->serial;
+    $num_rows = TRUE;
+  }
+  if ($num_rows) {
+    return $stock_list;
+  }
+  else {
+    return array();
+  }
+}
+
+/**
+ * List the individual stock items so that they can be adjusted (if the user has permission)
+ */
+function erp_stock_list_item($nid) {
+  $node = node_load($nid);
+  $dest = array('query' => 'destination=node/'. $nid);
+
+  $header = array(t('Serial'), t('Receipt price'), t('Store'));
+
+  if (module_exists('erp_cart')) {
+    $header[] = t('Add to cart');
+  }
+  if (user_access('stock adjust')) {
+    $header[] = t('Adjust');
+  }
+  $header[] = t('Sold?');
+  $rows = array();
+
+  $result = db_query("SELECT stock_id, serial, receipt_price, store_nid, sell_date FROM {erp_stock} WHERE stock_nid = %d ORDER by sell_date ASC", $nid);
+  while ($stock = db_fetch_array($result)) {
+    $store = node_load($stock['store_nid']);
+    if ($stock['serial']) {
+      $sale_node = erp_stock_invoice_locate($nid, $stock['serial']);
+    }
+
+    if (module_exists('erp_cart')) {
+      $link_temp = erp_cart_erp_item_link($node, $stock['serial']);
+      $link1 = l($link_temp['erp_item_cart_link']['title'],
+                 $link_temp['erp_item_cart_link']['href'], array(
+                   'query' => $link_temp['erp_item_cart_link']['query'],
+                   'attributes' => $link_temp['erp_item_cart_link']['attributes'],
+                   'html' => TRUE,
+                 ));
+
+      $row = array($stock['serial'], erp_currency($stock['receipt_price']), $store->title, $link1);
+    }
+    else {
+      $row = array($stock['serial'], erp_currency($stock['receipt_price']), $store->title);
+    }
+    if (user_access('stock adjust')) {
+      //if (!$sale_node) {
+      $links = l(t('Edit'), 'erp/stock/edit/'. $nid .'/' . $stock['stock_id'], $dest);
+      $links .= ' - '. l(t('Delete'), 'erp/stock/delete/'. $nid .'/' . $stock['stock_id'], $dest);
+      if ($stock['sell_date'] == 0) {
+        $links .= ' - '. l(t('Mark Sold'), 'erp/stock/sold/'. $nid .'/' . $stock['stock_id'], $dest);
+      }
+      else {
+        $links .= ' - '. l(t('Mark available'), 'erp/stock/unsold/'. $nid .'/' . $stock['stock_id'], $dest);
+      }
+      //}
+      //else {
+      //  $links[] = '&nbsp;';
+      //}
+
+      $row[] = $links;
+      $links = array();
+    }
+    if ($stock['sell_date'] != 0) {
+      if ($sale_node->type == 'erp_invoice') {
+        $id = $sale_node->invoice_id;
+      }
+      else {
+        $id = $sale_node->cash_sale_id;
+      }
+
+      if ($sale_node) {
+        $row[] = date_convert($stock['sell_date'], DATE_UNIX, DATE_DATETIME) .' - '. l($id, 'node/'. $sale_node->nid, $dest);
+      }
+      else {
+        $row[] = date_convert($stock['sell_date'], DATE_UNIX, DATE_DATETIME);
+      }
+    }
+    else {
+      $row[] = 0;
+    }
+    $rows[] = $row;
+    // Reset vars
+    unset($row);
+    unset($sale_node);
+  }
+
+  $output = theme('table', $header, $rows);
+
+  if (user_access('stock adjust')) {
+    $output .= l(t('add stock'), 'erp/stock/add/'. $nid, $dest);
+  }
+  return $output;
+}
+
+/**
+ * Given an item nid and a serial number, return the invoice
+ *
+ * @param unknown_type $nid
+ * @param unknown_type $serial
+ */
+function erp_stock_invoice_locate($nid, $serial) {
+  $sale_nid = db_result(db_query("SELECT nid FROM {erp_invoice_data} WHERE item_nid = %d AND serial = '%s'", $nid, $serial));
+  if (!$sale_nid && module_exists('erp_cash_sale')) {
+    $sale_nid = db_result(db_query("SELECT nid FROM {erp_cash_sale_data} WHERE item_nid = %d AND serial = '%s'", $nid, $serial));
+  }
+  return node_load($sale_nid);
+}
+
+function erp_stock_delete($nid, $stock_id) {
+  // TODO Should record in some sort of "audit" log here
+  db_query("DELETE FROM {erp_stock} WHERE stock_nid = %d AND stock_id = %d", $nid, $stock_id);
+  drupal_set_message($stock_id . " was successfully deleted from stock");
+  erp_stock_check_update_in_stock($nid);
+  drupal_goto();
+}
+
+function erp_stock_sold($nid, $stock_id) {
+  // TODO Should record in some sort of "audit" log here?
+  db_query("UPDATE {erp_stock} SET sell_date = 1 WHERE stock_nid = %d AND stock_id = %d", $nid, $stock_id);
+  drupal_set_message($stock_id . " was successfully marked as sold");
+  erp_stock_check_update_in_stock($nid);
+  drupal_goto();
+}
+
+function erp_stock_unsold($nid, $stock_id) {
+  // TODO Should record in some sort of "audit" log here?
+  db_query("UPDATE {erp_stock} SET sell_date = 0 WHERE stock_nid = %d AND stock_id = %d", $nid, $stock_id);
+  drupal_set_message($stock_id . " was successfully marked as not sold");
+  erp_stock_check_update_in_stock($nid);
+  drupal_goto();
+}
+
+function erp_stock_edit_form(&$form_state, $nid, $stock_id = NULL) {
+  $node = node_load($nid);
+  $stock = db_fetch_object(db_query("SELECT * FROM {erp_stock} WHERE stock_nid = %d AND stock_id = %d", $nid, $stock_id));
+  $store = node_load($stock->store_nid);
+
+  $form['stock_details']['desc'] = array(
+    '#type' => 'markup',
+    '#value' => $node->title,
+  );
+
+  $form['stock_details']['store'] = array(
+    '#type' => 'select',
+    '#title' => t('Store'),
+    '#options' => erp_store_list(),
+    '#default_value' => $store->store_id,
+  );
+
+  $form['stock_details']['serial'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Serial number'),
+    '#default_value' => $stock->serial,
+    '#size' => 60,
+    '#maxlength' => 64,
+  );
+
+  $form['stock_details']['receipt_price'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Receipt price'),
+    '#default_value' => erp_currency($stock->receipt_price),
+    '#size' => 20,
+    '#maxlength' => 20,
+  );
+
+  $form['stock_details']['sell_date'] = array(
+    '#type' => 'date_popup',
+    '#title' => t('Sell date'),
+    '#default_value' => date_convert($stock->sell_date, DATE_UNIX, DATE_DATETIME),
+//    '#date_increment' => 15,
+    '#date_year_range' => '-2:3'
+  );
+
+  $form['stock_details']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save')
+  );
+
+  $form['stock_nid'] = array('#type' => 'value', '#value' => $nid);
+  $form['stock_id'] = array('#type' => 'value', '#value' => $stock_id);
+
+  return $form;
+}
+
+function erp_stock_edit_form_submit($form, &$form_state) {
+  erp_stock_save_entry($form_state['values'], FALSE);
+}
+
+function erp_stock_add_form(&$form_state, $nid) {
+  // Reuse the edit form
+  $form = erp_stock_edit_form(&$form_state, $nid);
+
+  return $form;
+}
+
+function erp_stock_add_form_submit($form, &$form_state) {
+  erp_stock_save_entry($form_state['values'], TRUE);
+}
+
+function erp_stock_save_entry($record, $is_new) {
+
+  // Load nodes to make a nice msg
+  $node = node_load($record['stock_nid']);
+  $store = node_load(erp_id_to_nid('store', $record['store']));
+
+  // Set store
+  $record['store_nid'] = $store->nid;
+  if ($record['sell_date']) {
+    $record['sell_date'] = date_convert($record['sell_date'], DATE_DATETIME, DATE_UNIX);
+  }
+
+  // Write the record
+  if ($is_new) {
+    drupal_write_record('erp_stock', $record);
+    // Send msg,
+    drupal_set_message(t('Stock for %node at %store has been added successfully', array('%node' => $node->title, '%store' => $store->title)));
+  }
+  else {
+    drupal_write_record('erp_stock', $record, array('stock_id'));
+    // Send msg.
+    drupal_set_message(t('Stock for %node at %store has been adjusted successfully', array('%node' => $node->title, '%store' => $store->title)));
+  }
+}

@@ -1,0 +1,261 @@
+<?php
+// $Id: erp_pricing.module,v 1.8.2.8 2010/02/25 06:02:27 simon Exp $
+
+// TODO: Dont think the module is really complete.
+
+/**
+ * Pricing help fuction
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_pricing_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    // This description is shown in the listing at admin/modules.
+    return t('ERP pricing levels module.');
+    break;
+  }
+  return NULL;
+}
+
+/**
+ * Pricing permissions
+ *
+ * @return unknown
+ */
+function erp_pricing_perm() {
+  return array('erp pricing admin', 'erp pricing view');
+}
+
+/**
+ * Menu details
+ *
+ */
+function erp_pricing_menu() {
+  $items['admin/erp/pricing'] = array(
+    'title' => 'Pricing',
+    'description' => 'Configure erp pricing settings',
+    'access arguments' => array('erp pricing admin'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_pricing_admin_settings')
+  );
+
+  return $items;
+}
+
+/**
+ * Display details for a particular pricing
+ *
+ * @return unknown
+ */
+function erp_pricing_details() {
+  $customer = arg(1);
+
+  $output .= '';
+
+  if (user_access('erp pricing admin')) {
+    // TODO: Allow privileged users to modify pricing levels
+    $output .= '<div class="code">';
+    $output .= t('Current Pricing Level: ') . erp_pricing_get_entry($customer);
+    $output .= '</div>';
+  }
+  else {
+    // Fetch details from accounts here
+    $output .= '<div class="code">';
+    $output .= t('Current Pricing Level: ') . erp_pricing_get_entry($customer);
+    $output .= '</div>';
+  }
+
+  return $output;
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $name
+ * @param unknown_type $node
+ */
+function erp_pricing_set_level($nid, $pid) {
+  db_query("DELETE FROM {erp_pricing} WHERE nid = '%d'", $nid);
+  db_query("INSERT INTO {erp_pricing} (pid, nid) VALUES (%d, %d)", $pid, $nid);
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $nid
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_pricing_get_level($nid) {
+  $entry = erp_pricing_get_entry($nid);
+  if ($entry) {
+    return $entry['level'];
+  }
+  else {
+    $entry = erp_pricing_get_default();
+    return $entry['level'];
+  }
+}
+
+function erp_pricing_get_entry($nid, $field = 'level') {
+  $result = db_query("SELECT * FROM {erp_pricing} p INNER JOIN {erp_pricing_levels} l ON p.pid = l.pid WHERE p.nid = %d", $nid);
+  if ($row = db_fetch_array($result)) {
+    return $row[$field];
+  }
+  else {
+    return erp_pricing_get_default($field);
+  }
+}
+
+function erp_pricing_get_default($field) {
+  $result = db_query("SELECT * FROM {erp_pricing_levels} WHERE pid = %d", variable_get('erp_default_pricing_level', 1));
+  if ($row = db_fetch_array($result)) {
+    return $row[$field];
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function erp_pricing_list_levels() {
+  $result = db_query("SELECT * FROM {erp_pricing_levels}");
+  $num_rows = FALSE;
+    while ($row = db_fetch_array($result)) {
+      $rows[$row['pid']] = $row['level'];
+      $num_rows = TRUE;
+    }
+  if ($num_rows) {
+    return $rows;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Allow setting some defaults for the pricing module
+ *
+ */
+function erp_pricing_admin_settings() {
+  drupal_set_title(t('Pricing settings'));
+
+  $form['erp_default_pricing_level'] =
+    array('#type' => 'select',
+          '#options' => erp_pricing_list_levels(),
+          '#title' => t('Default Price Level'),
+          '#default_value' => variable_get('erp_default_pricing_level', ''));
+
+  return system_settings_form($form);
+}
+
+/**
+ * The pricing part of the form which is used to enter a customer
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_pricing_form($node) {
+  if ($node->pid) {
+    $node->pricing = erp_pid_to_pricing($node->pid);
+  }
+  else {
+    $node->pid = variable_get('erp_default_pricing_level', '');
+  }
+
+  return array('#type' => 'textfield',
+               '#title' => t('Pricing Level'),
+               '#size' => 20,
+               '#maxlength' => 40,
+               '#default_value' => $node->pricing);
+}
+
+/**
+ * Validate a pricing level as existing
+ *
+ * @param unknown_type $node
+ */
+function erp_pricing_validate($form, $form_state) {
+  // If there was a franchisee specified
+  if (!$form_state['pricing']) {
+    form_set_error('pricing', t('Each customer must have a pricing level.'));
+  }
+  else {
+    // Try and load the franchisee from the name entered
+    $account = user_load(array('name' => $form_state['pricing']));
+
+    // If the franchisee name is non existant, give an error
+    if (!$account->uid) {
+      form_set_error('pricing', t('The pricing level %name does not exist.', array('%name' => theme('placeholder', $form_state['pricing']))));
+    }
+    else {
+      // Set the fid field to be the uid of the franchisee
+      //$node->pid = $account->uid;
+    }
+  }
+}
+
+/**
+ * Get a pricing level *
+ * @param int $fid
+ * @return string $username
+ */
+function erp_pid_to_pricing($pid) {
+  $result = db_query("SELECT * from {erp_pricing} WHERE pid = %d", $pid);
+  if ($row = db_fetch_array($result)) {
+    return $row['level'];
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function erp_pricing_theme() {
+  return array(
+    'erp_pricing_info' => array(
+      'file' => 'erp_pricing.module',
+      'arguments' => array(
+        'node' => NULL,
+      ),
+    ),
+  );
+};
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $node
+ */
+function theme_erp_pricing_info($node) {
+  $output = '<div class="franchisee">';
+  $account = erp_pricing_get($node->nid);
+
+  $output .= t('Pricing: ') . $account;
+  $output .= '</div>';
+  return $output;
+}
+
+//TODO: take a default param for how many decimal places (international currencies)
+
+function erp_pricing_rounding($amount) {
+  $amount = round($amount, 2);
+
+  // If its below 10 dollars, make it .99 cents
+  if ($amount < 10) {
+    $amount = round(($amount - 1)) + .99;
+    return $amount;
+  }
+
+  // If its below 100 dollars, make it .95 cents
+  if ($amount < 100) {
+    $amount = round(($amount - 1)) + .95;
+    return $amount;
+  }
+
+  // If its below 1000 dollars, make it end in 9
+  if ($amount < 1000) {
+    $amount = round(($amount - 10), -1) + 9;
+    return $amount;
+  }
+}

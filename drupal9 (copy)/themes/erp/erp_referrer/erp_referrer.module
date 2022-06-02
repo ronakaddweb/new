@@ -1,0 +1,373 @@
+<?php
+// $Id: erp_referrer.module,v 1.7.2.6 2010/04/05 02:10:56 simon Exp $
+
+/* TODO Node previews and adding form fields to the node form.
+   There is a subtle but important difference in the way node previews (and other
+   such operations) are carried out when adding or editing a node. With the new
+   Forms API, the node form is handled as a multi-step form. When the node form
+   is previewed, all the form values are submitted, and the form is rebuilt with
+   those form values put into $form['#node']. Thus, form elements that are added
+   to the node form will lose any user input unless they set their '#default_value'
+   elements using this embedded node object. */
+
+/* TODO New user_mail_tokens() method may be useful.
+   user.module now provides a user_mail_tokens() function to return an array
+   of the tokens available for the email notification messages it sends when
+   accounts are created, activated, blocked, etc. Contributed modules that
+   wish to make use of the same tokens for their own needs are encouraged
+   to use this function. */
+
+/* TODO Implement the hook_theme registry. Combine all theme registry entries
+   into one hook_theme function in each corresponding module file.
+function erp_referrer_theme() {
+  return array(
+  );
+}; */
+
+/**
+ * Provide help for the referrer module
+ */
+function erp_referrer_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    $output = t('ERP referral cards module');
+    break;
+  }
+  return $output;
+}
+
+/**
+ * Provide permissions for the referrer module
+ */
+function erp_referrer_perm() {
+  return array('referrer', 'record referral', 'record redemption');
+}
+
+/**
+ * Register our menu hooks
+ */
+function erp_referrer_menu() {
+  $items['referral'] = array(
+    'title' => 'referral',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_referrer_form'),
+    'access arguments' => array('record referral')
+  );
+
+  $items['redemption'] = array(
+    'title' => 'redemption',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_referrer_redemption_form'),
+    'access arguments' => array('record redemption')
+  );
+
+  $items['user/%uid/erp/referrer'] = array(
+    'title' => 'referrals',
+    'page callback' => 'erp_referrer_references',
+    'access arguments' => array('referrer'),
+    'type' => MENU_LOCAL_TASK
+  );
+
+  return $items;
+}
+
+/**
+ * Return a page of information for the currently selected user
+ * with the number of referrals they've done, the value they've
+ * earned etc.
+ */
+function erp_referrer_references() {
+  global $user;
+
+  $output = erp_referral_statistics($user->uid);
+
+  return $output;
+}
+
+/**
+ * Display the form so we can accept referral cards
+ */
+function erp_referrer_form() {
+  $output = '';
+  $form = '';
+
+/* TODO The 'op' element in the form values is deprecated.
+   Each button can have #validate and #submit functions associated with it.
+   Thus, there should be one button that submits the form and which invokes
+   the normal form_id_validate and form_id_submit handlers. Any additional
+   buttons which need to invoke different validate or submit functionality
+   should have button-specific functions. */
+  if ($form_values['op'] == t('finish')) {
+    $edit = $_POST['edit'];
+
+    $user = user_load(array('uid' => $edit['referral']));
+    drupal_set_title(t('Referral for ') . $user->name);
+
+    if (erp_referral_record($user->uid, $edit['value'])) {
+      $output = referral_statistics($user->uid);
+    }
+    else {
+      $output = t('An error occurred');
+    }
+
+    $output = '<div class="referral">' . $output . '</div>';
+
+    return $output;
+  }
+/* TODO The 'op' element in the form values is deprecated.
+   Each button can have #validate and #submit functions associated with it.
+   Thus, there should be one button that submits the form and which invokes
+   the normal form_id_validate and form_id_submit handlers. Any additional
+   buttons which need to invoke different validate or submit functionality
+   should have button-specific functions. */
+  elseif ($form_values['op'] == t('next')) {
+    $edit = $_POST['edit'];
+
+    $user = user_load(array('uid' => $edit['referral']));
+    drupal_set_title(t('Referral for ') . $user->name);
+
+    $form .= '<div class="confirmation">';
+    $form .= t('About to record a referral for ') . l($user->name, 'user/' . $user->uid) . t(' with referral code ') . $user->uid . t(' and value of $') . $edit['value'];
+    $form .= '</div>';
+
+    $form['referral'] =
+      array('#type' => 'hidden',
+            '#value' => $user->uid);
+
+    $form['value'] =
+      array('#type' => 'hidden',
+            '#value' => $edit['value']);
+
+    $form['back'] =
+      array('#type' => 'submit',
+            '#value' => t('back'));
+
+    $form['finish'] =
+      array('#type' => 'submit',
+            '#value' => t('finish'));
+
+    $output = drupal_get_form('referral', $form);
+
+    $output = '<div class="referral">' . $output . '</div>';
+
+    return $output;
+  }
+/* TODO The 'op' element in the form values is deprecated.
+   Each button can have #validate and #submit functions associated with it.
+   Thus, there should be one button that submits the form and which invokes
+   the normal form_id_validate and form_id_submit handlers. Any additional
+   buttons which need to invoke different validate or submit functionality
+   should have button-specific functions. */
+  elseif (($form_values['op'] == t('back')) or !$form_values['op'])  {
+    $form['referral'] =
+      array('#type' => 'textfield',
+            '#title' => t('Referrers Number'),
+            '#default_value' => '',
+            '#size' => 5,
+            '#maxlength' => 5,
+            '#description' => t('Referral Number from bottom right of referral card'));
+
+    $form['value'] =
+      array('#type' => 'textfield',
+            '#title' => t('Referring Value'),
+            '#default_value' => '30',
+            '#size' => 5,
+            '#maxlength' => 5,
+            '#description' => t('The amount in dollars that the referee earns'));
+
+    $form['next'] =
+      array('#type' => 'submit',
+            '#value' => t('next'));
+
+  }
+  return $form;
+}
+
+/**
+ * Display the form so we can process a redemption cards
+ */
+function erp_referrer_redemption_form() {
+  $output = '';
+  $form = '';
+
+/* TODO The 'op' element in the form values is deprecated.
+   Each button can have #validate and #submit functions associated with it.
+   Thus, there should be one button that submits the form and which invokes
+   the normal form_id_validate and form_id_submit handlers. Any additional
+   buttons which need to invoke different validate or submit functionality
+   should have button-specific functions. */
+  if ($form_values['op'] == t('finish')) {
+    $edit = $_POST['edit'];
+
+    $user = user_load(array('uid' => $edit['referrer']));
+    drupal_set_title(t('Redemption for ') . $user->name);
+
+    if (erp_referral_redemption_record($user->uid, $edit['redemption'])) {
+      $output = erp_referral_statistics($user->uid);
+    }
+    else {
+      $output = t('An error occurred');
+    }
+
+    $output = '<div class="referral">' . $output . '</div>';
+    return $output;
+  }
+/* TODO The 'op' element in the form values is deprecated.
+   Each button can have #validate and #submit functions associated with it.
+   Thus, there should be one button that submits the form and which invokes
+   the normal form_id_validate and form_id_submit handlers. Any additional
+   buttons which need to invoke different validate or submit functionality
+   should have button-specific functions. */
+  elseif ($form_values['op'] == t('next')) {
+    $edit = $_POST['edit'];
+
+    $user = user_load(array('uid' => $edit['referrer']));
+    drupal_set_title(t('Redemption for ') . $user->name);
+
+    $form .= '<div class="confirmation">';
+    $form .= t('About to redeem referral value for ') . l($user->name, 'user/' . $user->uid) . t(' with referral code ') . $user->uid . '.';
+    $form .= '</div>';
+
+    $form .= referral_statistics($user->uid);
+    $form['redemption'] =
+      array('#type' => 'textfield',
+            '#title' => t('Enter Redemption value'),
+            '#default_value' => '',
+            '#size' => 5,
+            '#maxlength' => 5,
+            '#description' => t('Redemption amount must not exceed current balance'));
+
+    $form['referrer'] =
+      array('#type' => 'hidden',
+            '#value' => $user->uid);
+
+    $form['back'] =
+      array('#type' => 'submit',
+            '#value' => t('back'));
+
+    $form['finish'] =
+      array('#type' => 'submit',
+            '#value' => t('finish'));
+
+    //$output = drupal_get_form('referral', $form);
+
+    //$output = '<div class="referral">' . $output . '</div>';
+
+    return $form;
+  }
+/* TODO The 'op' element in the form values is deprecated.
+   Each button can have #validate and #submit functions associated with it.
+   Thus, there should be one button that submits the form and which invokes
+   the normal form_id_validate and form_id_submit handlers. Any additional
+   buttons which need to invoke different validate or submit functionality
+   should have button-specific functions. */
+  elseif (($form_values['op'] == t('back')) or !$form_values['op'])  {
+    $form['referrer'] =
+      array('#type' => 'textfield',
+            '#title' => t('Referrers Number'),
+            '#default_value' => '',
+            '#size' => 5,
+            '#maxlength' => 5,
+            '#description' => t('Referral Number from bottom right of referral card'));
+
+    $form['submit'] =
+      array('#type' => 'submit',
+            '#value' => t('next'));
+
+    return $form;
+  }
+}
+
+/**
+ * Record a referral
+ */
+function erp_referral_record($uid, $value) {
+  $sql = "INSERT INTO {erp_referral} (rid, uid, value) VALUES (NULL, '$uid', '$value')";
+  return db_query($sql);
+}
+
+/**
+ * Record a referral redemption
+ */
+function erp_referral_redemption_record($uid, $value) {
+  if ($value < 1) {
+    return FALSE;
+  }
+  $value *= -1;
+  $sql = "INSERT INTO {erp_referral} (rid, uid, value) VALUES (NULL, '$uid', '$value')";
+  return db_query($sql);
+}
+
+/**
+ *
+ */
+function erp_referral_statistics($uid) {
+  $user = user_load(array('uid' => $uid));
+  $referral_count = 0;
+  $redemption_count = 0;
+  $earnings = 0;
+  $redemptions = 0;
+  $balanace = 0;
+  $output = '';
+
+  $sql = "SELECT * FROM {erp_referral} WHERE uid = '$uid'";
+  $result = db_query($sql);
+  while ($referral = db_fetch_object($result)) {
+    if ($referral->value < 0) {
+      $redemption_count++;
+      $redemptions += $referral->value;
+    }
+    else {
+      $referral_count++;
+      $earnings += $referral->value;
+    }
+    $balance += $referral->value;
+  }
+
+  if (!drupal_get_title()) {
+    drupal_set_title(t('Referral Statistics'));
+  }
+
+  $output .= '<div class="code">';
+  $output .= t('Your Referrer code: ') . $user->uid;
+  $output .= '</div>';
+  $output .= '<div class="header">';
+  $output .= t('Referral Statistics');
+  $output .= '</div>';
+
+  $output .= '<div class="statistics">';
+  $output .= '<div class="referrals">';
+  $output .= t('Number of Referrals: ') . $referral_count;
+  $output .= '</div>';
+  $output .= '<div class="redemptions">';
+  $output .= t('Number of Redemptions: ') . $redemption_count;
+  $output .= '</div>';
+
+  $output .= '<div class="referral-balance">';
+  $output .= t('Refferal Amount Earned: '. erp_symbol()) . $earnings;
+  $output .= '</div>';
+  $output .= '<div class="redemtion-balance">';
+  if ($redemptions < 0) {
+    $redemptions *= -1;
+  }
+  $output .= t('Amount Redeemed: '. erp_symbol()) . $redemptions;
+  $output .= '</div>';
+
+  $output .= '<div class="balance">';
+  $output .= t('Current Balance: '. erp_symbol()) . $balance;
+  $output .= '</div>';
+  $output .= '</div>';
+
+  $output = '<div class="referral">' . $output . '</div>';
+  return $output;
+}
+
+/**
+ * Allow changing referral settings
+ *
+function erp_referrer_settings() {
+  if (!user_access('admin referrer')) {
+    return array();
+  }
+}
+*/

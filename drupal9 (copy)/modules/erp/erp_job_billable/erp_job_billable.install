@@ -1,0 +1,21 @@
+<?php
+
+function erp_job_billable_install() {
+  drupal_install_schema('erp_job_billable');
+}
+
+function erp_job_billable_schema() {
+  $schema['erp_job_billable'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'uid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'billable_time' => array('type' => 'float', 'not null' => FALSE, 'default' => 0, 'disp-width' => '10'),
+      'stamp' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'indexes' => array(
+      'nid' => array('nid'),
+      'uid' => array('uid')),
+  );
+
+  return $schema;
+}
+

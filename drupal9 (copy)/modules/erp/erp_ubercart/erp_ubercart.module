@@ -1,0 +1,462 @@
+<?php
+// $Id: erp_ubercart.module,v 1.1.2.4 2010/02/25 06:02:28 simon Exp $
+
+/**
+ * @file
+ *
+ * Integration with ubercart via services
+ */
+
+/**
+ * Imlpementation of hook_menu().
+ */
+function erp_ubercart_menu() {
+  $items['erp/ubercart'] = array(
+    'title' => 'Ubercart sync',
+    'page callback' => 'erp_ubercart_sync',
+    'access arguments' => array('admin erp ubercart'),
+    'type' => MENU_NORMAL_ITEM
+  );
+
+  $items['admin/erp/ubercart'] = array(
+    'title' => 'Ubercart sync',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_ubercart_admin_settings'),
+    'access arguments' => array('admin erp ubercart'),
+    'type' => MENU_NORMAL_ITEM
+  );
+
+  return $items;
+}
+
+function erp_ubercart_perm() {
+  return array('admin erp ubercart');
+}
+
+function erp_ubercart_admin_settings() {
+	$form['erp_ubercart_sync_store'] = array(
+    '#title' => t('ERP store to use for ubercart sync'),
+    '#type' => 'select',
+    '#options' => erp_store_list(),
+    '#default_value' => variable_get('erp_ubercart_sync_store', ''),
+	  '#description' => t('Choose the ERP store that the ubercart sync should select stock from'),
+	);
+
+  $catalog = erp_ubercart_get_catalog();
+  if ($catalog) {
+    $form['erp_ubercart_sync_catalog'] = array(
+      '#title' => t('Ubercart catalog'),
+      '#type' => 'select',
+      '#options' => $catalog,
+      '#default_value' => variable_get('erp_ubercart_sync_catalog', ''),
+      '#description' => t('Which ubercart catalog do you want to use on the remote system?'),
+    );
+  }
+
+  $form['erp_ubercart_old_products_action'] = array(
+    '#title' => t('Action to take for products no longer in stock?'),
+    '#type' => 'select',
+    '#options' => array(1 => t('Unpublish'), 2 => t('Delete')),
+    '#default_value' => variable_get('erp_ubercart_old_products_action', ''),
+    '#description' => t('What to do when an ERP product is no longer in stock'),
+  );
+
+	$form['erp_ubercart_xmlrpc'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Services/XMLRPC Settings',
+	  '#collapsed' => TRUE,
+	  '#collapsible' => TRUE
+	);
+
+  $form['erp_ubercart_xmlrpc']['erp_ubercart_remote_server'] = array(
+    '#title' => t('Remote server'),
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#default_value' => variable_get('erp_ubercart_remote_server', ''),
+    '#description' => t('Remote server hostname + any path requirements, eg for testing I used localhost/iseek/iseek.biz, more typical would be your webserver details www.xxx.com - DO NOT include a trailing slash'),
+  );
+
+  $form['erp_ubercart_xmlrpc']['erp_ubercart_remote_user'] = array(
+    '#title' => t('Remote user'),
+    '#type' => 'textfield',
+    '#size' => 20,
+    '#default_value' => variable_get('erp_ubercart_remote_user', ''),
+    '#description' => t('A valid user on the remote/ubercart system who has permission to add/edit/delete Product nodes'),
+  );
+
+  $form['erp_ubercart_xmlrpc']['erp_ubercart_remote_pass'] = array(
+    '#title' => t('Remote users pass'),
+    '#type' => 'password',
+    '#size' => 20,
+    '#default_value' => variable_get('erp_ubercart_remote_pass', ''),
+    '#description' => t('Password for the user on the remote system. Note this is stored in plain text'),
+  );
+
+  $form['erp_ubercart_xmlrpc']['erp_ubercart_remote_key'] = array(
+    '#title' => t('Remote key'),
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#default_value' => variable_get('erp_ubercart_remote_key', ''),
+    '#description' => t('Key as defined in admin/build/services/keys'),
+  );
+
+  $form['erp_ubercart_xmlrpc']['erp_ubercart_remote_domain'] = array(
+    '#title' => t('Remote domain'),
+    '#type' => 'textfield',
+    '#size' => 30,
+    '#default_value' => variable_get('erp_ubercart_remote_domain', $_SERVER['HTTP_HOST']),
+    '#description' => t('Domain as defined in admin/build/services/keys'),
+  );
+
+  return system_settings_form($form);
+}
+
+function erp_ubercart_get_catalog() {
+	$server = variable_get('erp_ubercart_remote_server', '');
+	$key = variable_get('erp_ubercart_remote_key', '');
+
+	if ($server && $key) {
+    $xmlrpc_url = 'http://'. $server .'/services/xmlrpc';
+    $domain = variable_get('erp_ubercart_remote_domain', $_SERVER['HTTP_HOST']);
+
+    $session = erp_ubercart_connect($xmlrpc_url, $key, $domain);
+
+    $terms = erp_ubercart_category_list($xmlrpc_url, $key, $domain, $session);
+
+    return $terms;
+	}
+	else {
+		drupal_set_message(t('You need to configure the server and key before the catalog can be retrieved'));
+		return array();
+	}
+}
+
+function erp_ubercart_sync() {
+  $xmlrpc_url = 'http://'. variable_get('erp_ubercart_remote_server', '') .'/services/xmlrpc';
+  $key = variable_get('erp_ubercart_remote_key', '');
+  $domain = variable_get('erp_ubercart_remote_domain', $_SERVER['HTTP_HOST']);
+
+  $uid = variable_get('erp_ubercart_remote_uid', 0);
+  $user = variable_get('erp_ubercart_remote_user', '');
+
+  // Get taxonomy details
+  $catalog_whole = variable_get('erp_ubercart_catalog_whole', '');
+  $catalog = variable_get('erp_ubercart_sync_catalog', '');
+  $new_taxonomy = erp_ubercart_get_taxonomy($catalog_whole, $catalog);
+
+  // Establish an xmlrpc session
+  $session = erp_ubercart_connect($xmlrpc_url, $key, $domain);
+
+  // Retrieve the list of products currently on the website
+  $products = erp_ubercart_product_list($xmlrpc_url, $key, $domain, $session);
+
+  // Retrieve the list of erp products in stock to place on the website
+  $stock_products = erp_ubercart_products_in_stock();
+
+  // Loop through the stock products, updating/adding as required
+  foreach ($stock_products as $item_node) {
+  	$item_node->code = trim($item_node->code);
+  	if ($products[$item_node->code]) {
+  		$product = (object)$products[$item_node->code];
+  		$update = FALSE;
+
+  		// Updating (only some fields are supported).
+  		$item_node->rrp_price = array_pop(module_invoke_all('erp_tax_inc_amount', $item_node->rrp_price));
+  		if (bccomp($product->list_price, $item_node->rrp_price)) {
+  			$product->list_price = $item_node->rrp_price;
+  			$update = TRUE;
+  		}
+
+  		$item_node->sell_price = array_pop(module_invoke_all('erp_tax_inc_amount', $item_node->sell_price));
+  		if (bccomp($product->sell_price, $item_node->sell_price)) {
+        $product->sell_price = $item_node->sell_price;
+  	    $update = TRUE;
+      }
+
+      if (bccomp($product->cost, $item_node->buy_price)) {
+        $product->cost = $item_node->buy_price;
+        $update = TRUE;
+      }
+
+      if ($product->title != $item_node->title) {
+        $product->title = $item_node->title;
+  	    $update = TRUE;
+      }
+
+      if ($product->body != $item_node->body) {
+        $product->body = $item_node->body;
+        $update = TRUE;
+      }
+
+      if ($product->uid != $uid) {
+      	$product->uid = $uid;
+      	$update = TRUE;
+      }
+
+  	  if ($product->name != $user) {
+        $product->name = $user;
+        $update = TRUE;
+      }
+
+		  // Its possible that the user doesnt want a catalog, although unlikely.
+		  if ($catalog && $catalog_whole) {
+		  	if (!$product->taxonomy[$new_taxonomy['tid']]) {
+		      $product->taxonomy[$new_taxonomy['vid']] = array($new_taxonomy['tid']);
+		      $update = TRUE;
+		  	}
+
+		    /* For tags
+		     * $product->taxonomy['tags'] => array(2=>'military, navy');
+		     */
+		  }
+
+      // Is update required?
+      if ($update) {
+  		  $result = erp_ubercart_product_update($xmlrpc_url, $key, $domain, $session, $product);
+  		  if ($result) {
+          watchdog('erp_ubercart', 'Updated node - '. $result);
+  		  }
+      }
+  	}
+  	else {
+  		// Adding
+      $product = erp_ubercart_convert($item_node);
+  		$result = erp_ubercart_product_update($xmlrpc_url, $key, $domain, $session, $product);
+      if ($result) {
+        watchdog('erp_ubercart', 'Added node - '. $result);
+      }
+  	}
+
+  	// Remove the entry from $products so we can remove the ones that are left at the end
+  	unset($products[$item_node->code]);
+  }
+
+  // Loop through the remaining products and de-list them
+  if (is_array($products)) {
+	  foreach ($products as $product) {
+	  	$action = variable_get('erp_ubercart_old_products_action', 1);
+	  	switch ($action) {
+	  		case 1: // Unpublish
+	  	    $product['status'] = 0;
+	  	    erp_ubercart_product_update($xmlrpc_url, $key, $domain, $session, (object)$product);
+	  	    break;
+	  		case 2: // Delete
+	  			erp_ubercart_product_delete($xmlrpc_url, $key, $domain, $session, (object)$product);
+	  			break;
+	  	}
+	  }
+  }
+
+  // TODO: Some stats or something
+  return '';
+}
+
+function erp_ubercart_convert($item_node) {
+	// Take an erp item and convert to a ubercart product
+	$product = new stdClass();
+
+  $product->cost = $item_node->buy_price;
+	$product->list_price = $item_node->rrp_price;
+  $product->sell_price = $item_node->sell_price;
+
+	$product->model = $item_node->code;
+	$product->title = $item_node->title;
+  $product->body = $item_node->body;
+  $product->type = 'product';
+  $product->uid = variable_get('erp_ubercart_remote_uid', 0);
+  $product->name = variable_get('erp_ubercart_remote_user', '');
+
+  $catalog_whole = variable_get('erp_ubercart_catalog_whole', '');
+  $catalog = variable_get('erp_ubercart_sync_catalog', '');
+
+  // Its possible that the user doesnt want a catalog, although unlikely.
+  if ($catalog && $catalog_whole) {
+    $product->taxonomy = erp_ubercart_get_taxonomy($catalog_whole, $catalog);
+  }
+
+	return $product;
+}
+
+function erp_ubercart_products_in_stock() {
+	$store = variable_get('erp_ubercart_sync_store', '');
+	if (!$store) {
+		watchdog('erp_ubercart', 'An erp Store needs to be selected before synchronisation with ubercart');
+		return FALSE;
+	}
+	else {
+		$store_nid = erp_id_to_nid('store', $store);
+	}
+	$result = db_query("SELECT s.stock_nid FROM {erp_stock} s WHERE s.sell_date = 0 AND s.store_nid = %d ORDER BY s.stock_nid", $store_nid);
+
+	while ($row = db_fetch_array($result)) {
+		$node = node_load($row['stock_nid']);
+
+		$stock[trim($node->code)] = $node;
+	}
+
+	return $stock;
+}
+
+function erp_ubercart_get_taxonomy($catalog_whole, $catalog) {
+	foreach ($catalog_whole as $entry) {
+		if ($entry['tid'] == $catalog) {
+			return $entry;
+		}
+	}
+}
+
+function erp_ubercart_connect($xmlrpc_url, $key, $domain) {
+  $anon_session = xmlrpc($xmlrpc_url, 'system.connect');
+  if (!$anon_session) {
+    $error = check_report_xmlrpc_error(t('Unable to establish anon session, is the System service enabled on the remote server, and the key authorization setup?'));
+    if ($error) {
+      return FALSE;
+    }
+  }
+
+  $user = variable_get('erp_ubercart_remote_user', '');
+  $password = variable_get('erp_ubercart_remote_pass', '');
+
+  $nonce = user_password();
+  $timestamp = (string) time();
+  $hash = hash_hmac('sha256', $timestamp .';'.$domain .';'. $nonce .';'.'user.login', $key);
+  $result = xmlrpc($xmlrpc_url, 'user.login', $hash, $domain, $timestamp, $nonce, $anon_session['sessid'],
+    $user,
+    $password
+  );
+
+  if (!$result) {
+    $error = check_report_xmlrpc_error(t('Unable to login, check that the user service is enabled, and the authentication details are valid'));
+    if ($error) {
+      return FALSE;
+    }
+  }
+  else {
+  	variable_set('erp_ubercart_remote_uid', $result['user']['uid']);
+  	$session = $result['sessid'];
+  }
+
+  return $session;
+}
+
+function erp_ubercart_product_list($xmlrpc_url, $key, $domain, $session) {
+  $nonce = user_password();
+  $timestamp = time();
+  $hash = hash_hmac("sha256", $timestamp .';'. $domain .';'. $nonce .';'.'erp_ubercart.product_list', $key);
+  $result = xmlrpc($xmlrpc_url, 'erp_ubercart.product_list', $hash, $domain, $timestamp, $nonce, $session);
+
+  if (!$result) {
+    $error = check_report_xmlrpc_error(t('Unable to retrieve product list'));
+    if ($error) {
+      return FALSE;
+    }
+  }
+  else {
+    return $result;
+  }
+}
+
+function erp_ubercart_category_list($xmlrpc_url, $key, $domain, $session) {
+  $nonce = user_password();
+  $timestamp = time();
+  $hash = hash_hmac("sha256", $timestamp .';'. $domain .';'. $nonce .';'.'erp_ubercart.category_list', $key);
+  $result = xmlrpc($xmlrpc_url, 'erp_ubercart.category_list', $hash, $domain, $timestamp, $nonce, $session);
+
+  if (!$result) {
+    $error = check_report_xmlrpc_error(t('Unable to retrieve category list'));
+    if ($error) {
+      return FALSE;
+    }
+  }
+  else {
+  	variable_set('erp_ubercart_catalog_whole', $result);
+  	// Just build a list of the term names.
+  	foreach ($result as $entry) {
+  		$terms[$entry['tid']] = $entry['name'];
+  	}
+    return $terms;
+  }
+}
+
+function erp_ubercart_product_update($xmlrpc_url, $key, $domain, $session, $node) {
+  $nonce = user_password();
+  $timestamp = time();
+  $hash = hash_hmac("sha256", $timestamp .';'. $domain .';'. $nonce .';'.'erp_ubercart.product_by_code', $key);
+  $result = xmlrpc($xmlrpc_url, 'erp_ubercart.product_by_code', $hash, $domain, $timestamp, $nonce, $session, $node->model);
+
+  // Do not list nodes that have no price
+  if ($node->sell_price <= 0) {
+  	$node->status = 0;
+  	watchdog('erp_ubercart', 'Node - '. $node->nid .' - '. $node->model .' has no price, so will not be published');
+  }
+
+  if (!$result) {
+    $error = check_report_xmlrpc_error(t('Unable to retrieve product node'), $node);
+    if ($error) {
+      return FALSE;
+    }
+    else {
+    	// Its a new addition
+    	$nonce = user_password();
+      $timestamp = time();
+      $hash = hash_hmac("sha256", $timestamp .';'. $domain .';'. $nonce .';'.'node.save', $key);
+      $result = xmlrpc($xmlrpc_url, 'node.save', $hash, $domain, $timestamp, $nonce, $session, $node);
+    }
+  }
+  else {
+    $nonce = user_password();
+    $timestamp = time();
+    $hash = hash_hmac("sha256", $timestamp .';'. $domain .';'. $nonce .';'.'node.save', $key);
+    $result = xmlrpc($xmlrpc_url, 'node.save', $hash, $domain, $timestamp, $nonce, $session, $node);
+  }
+
+  if (!$result) {
+    $error = check_report_xmlrpc_error(t('Unable to retrieve product node'), $node);
+    if ($error) {
+      return FALSE;
+    }
+  }
+
+  return $result;
+}
+
+function erp_ubercart_product_delete($xmlrpc_url, $key, $domain, $session, $node) {
+  $nonce = user_password();
+  $timestamp = time();
+  $hash = hash_hmac("sha256", $timestamp .';'. $domain .';'. $nonce .';'.'node.get', $key);
+  $result = xmlrpc($xmlrpc_url, 'node.get', $hash, $domain, $timestamp, $nonce, $session, $node->nid);
+
+  if (!$result) {
+  	$error = check_report_xmlrpc_error(t('Unable to retrieve product node'), $node);
+    if ($error) {
+    	return FALSE;
+    }
+    else {
+    	watchdog('erp_ubercart', 'Product node no longer exists - '. $node->nid .' - '. $node->model);
+    }
+  }
+  else {
+    $nonce = user_password();
+    $timestamp = time();
+    $hash = hash_hmac("sha256", $timestamp .';'. $domain .';'. $nonce .';'.'node.delete', $key);
+    $result = xmlrpc($xmlrpc_url, 'node.delete', $hash, $domain, $timestamp, $nonce, $session, $node->nid);
+    $error = check_report_xmlrpc_error(t('Delete failed product node'), $node);
+    if ($error) {
+    	return FALSE;
+    }
+  }
+}
+
+function check_report_xmlrpc_error($message, $node = NULL) {
+	$error = xmlrpc_error();
+	if ($error) {
+		if ($node) {
+		  watchdog('erp_ubercart', 'Node: '. $node->nid .' - '. $node->model .' - '. $message .' - '. $error->message);
+		}
+		else {
+			watchdog('erp_ubercart', $message .' - '. $error->message);
+		}
+		return TRUE;
+	}
+	return FALSE;
+}

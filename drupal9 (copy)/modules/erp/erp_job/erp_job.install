@@ -1,0 +1,62 @@
+<?php
+
+function erp_job_install() {
+  drupal_install_schema('erp_job');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // If its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6001 WHERE name = 'erp_job'");
+}
+
+function erp_job_schema() {
+  $schema['erp_job'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'job_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'priority' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'start_date' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '12'),
+      'end_date' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '12'),
+      'oid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'invoice_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'job_desc' => array('type' => 'text', 'not null' => FALSE),
+      'job_assets' => array('type' => 'text', 'not null' => FALSE),
+      'printed' => array('type' => 'char', 'length' => '1', 'not null' => FALSE, 'default' => 'N')),
+    'primary key' => array('nid'),
+    'unique keys' => array(
+      'job_id' => array('job_id')),
+  );
+
+  return $schema;
+}
+
+function erp_job_update_6001() {
+  $ret = array();
+
+  // Fix job id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_job} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_job} ADD UNIQUE (job_id)");
+
+  $high_job = db_result(db_query("SELECT MAX(job_id) FROM {erp_job}"));
+  $ret[] = update_sql("ALTER TABLE {erp_job} CHANGE COLUMN job_id job_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_job} AUTO_INCREMENT = ". $high_job++);
+
+  db_query("ALTER TABLE {erp_job} DROP COLUMN due_date");
+  db_add_field($ret, 'erp_job', 'start_date', array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '12'));
+  db_add_field($ret, 'erp_job', 'end_date', array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '12'));
+
+  $result = db_query("SELECT nid FROM {erp_job} ORDER BY nid ASC");
+
+  while ($row = db_fetch_array($result)) {
+    $event = db_query("SELECT * from {event} WHERE nid = %d", $row['nid']);
+    if ($event) {
+      $event_row = db_fetch_array($event);
+      db_query("UPDATE {erp_job} SET start_date = %d, end_date = %d WHERE nid = %d",
+        $event_row['event_start'], $event_row['event_end'], $row['nid']);
+    }
+  }
+
+  $ret[] = update_sql("ALTER TABLE {erp_job} CHANGE COLUMN customer_id customer_nid int(10) NOT NULL");
+
+  return $ret;
+}

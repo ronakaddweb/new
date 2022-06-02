@@ -1,0 +1,655 @@
+<?php
+// $Id: erp_purchase_order.module,v 1.19.2.19 2010/03/09 10:21:08 simon Exp $
+
+/**
+ *
+ * purchase_order module
+ */
+
+/**
+ * Help function for purchase_order module
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_purchase_order_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP purchase_order module.');
+      break;
+    case 'node/add#erp_purchase_order':
+      // This description shows up when users click "create content."
+      return t('ERP purchase order.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * purchase_order node name
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_purchase_order_node_name($node) {
+  return t('erp purchase order');
+}
+
+/**
+ * Implementation of purchase_order_node_info
+ *
+ * @return array of information
+ */
+function erp_purchase_order_node_info() {
+  return array(
+    'erp_purchase_order' => array(
+      'name' => t('erp purchase order'),
+      'module' => 'erp_purchase_order',
+      'description' => t('ERP Purchase order'),
+      'title_label' => t('Purchase order by'),
+      'has_body' => TRUE
+    )
+  );
+}
+
+/**
+ * Return whether the user has access to a function or not.
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_purchase_order_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('add purchase_order', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit own purchase_order', $account) && ($account->uid == $node->uid)) {
+        return TRUE;
+      }
+      if (user_access('edit purchase_order', $account)) {
+        return TRUE;
+      }
+      break;
+
+    case 'view':
+      if (user_access('view purchase_orders', $account)) {
+        return TRUE;
+      }
+      break;
+  }
+  return FALSE;
+}
+
+/**
+ * purchase_order permissions
+ *
+ * @return unknown
+ */
+function erp_purchase_order_perm() {
+  return array(
+    'add purchase_order',
+    'edit purchase_order',
+    'edit own purchase_order',
+    'view purchase_orders',
+    'admin purchase_order'
+  );
+}
+
+/**
+ * Provide links for invoicing
+ *
+ * @param unknown_type $type
+ * @param unknown_type $node
+ * @param unknown_type $main
+ * @return unknown
+ */
+function erp_purchase_order_link($type, $node = 0, $main) {
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_purchase_order') {
+    $links = array_merge($links, module_invoke_all('erp_purchase_order_link', $node));
+  }
+
+  return $links;
+}
+
+function erp_purchase_order_invoice_link($node) {
+  // Do we want a link on the invoice
+  //return l(t('create p/o'), 'node/add/erp_purchase_order/' . $node->nid, array('title' => t('Create a purchase order for items on this invoice')));
+}
+
+function erp_purchase_order_erp_quote_link($node) {
+  $links['erp_purchase_order_erp_quote_link'] = array(
+    'title' => t('create p/o'),
+    'href' => 'node/add/erp-purchase-order/'. $node->nid,
+    'attributes' => array('title' => t('Create a purchase order for items on this quote')),
+    'query' => 'quote='. $node->nid
+  );
+
+  return $links;
+}
+
+function erp_purchase_order_erp_cart_link($node) {
+  $links['erp_purchase_order_erp_cart_link'] = array(
+    'title' => t('create p/o'),
+    'href' => 'node/add/erp-purchase-order/erp-cart',
+    'attributes' => array('title' => t('Create purchase order from cart')),
+    'query' => 'customer='. $_SESSION['curr_customer']
+  );
+
+  return $links;
+}
+
+/**
+ * purchase_order menu functions
+ *
+ * @param unknown_type $may_cache
+ * @return unknown
+ */
+function erp_purchase_order_menu() {
+  $items['admin/erp/purchase_order'] = array(
+    'title' => t('purchase order'),
+    'access' => user_access('admin purchase_order'),
+    'callback' => 'drupal_get_form',
+    'callback arguments' => 'erp_purchase_order_admin_settings'
+  );
+
+  return $items;
+}
+
+function erp_purchase_order_erp_quickjump_po($number) {
+  $nid = erp_id_to_nid('purchase_order', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Purchase Order not found');
+    return '';
+  }
+}
+
+function erp_purchase_order_erp_quickjump_info() {
+  return array('erp_purchase_order' => t('po-xxx - load a purchase order using its number.'));
+}
+
+function erp_purchase_order_admin_settings() {
+  drupal_set_title(t('Purchase order settings'));
+
+  $form['erp_purchase_order_email_bcc'] =
+    array('#type' => 'textfield',
+          '#title' => t('Email address to BCC when sending purchase orders'),
+          '#default_value' => variable_get('erp_purchase_order_email_bcc', ''));
+
+  $form += erp_set_next_id_form('erp_purchase_order', 'purchase_order', 'Purchase order');
+
+  return system_settings_form($form);
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * Now it's time to describe the form for collecting the information
+ * specific to this node type. This hook requires us to return some HTML
+ * that will be later placed inside the form.
+ */
+function erp_purchase_order_form(&$node, $form_state) {
+  global $user;
+
+  drupal_add_js(drupal_get_path('module', 'erp') .'/erp.js', 'footer');
+  drupal_add_tabledrag('draggable-entries', 'order', 'sibling', 'entry-line');
+
+  $type = node_get_types('type', $node);
+
+  $total_price = 0;
+
+  erp_set_customer($node);
+
+  // If this is being created from a quote, load the node data from that now.
+  $extra_ops = arg(3);
+  if (is_numeric($extra_ops)) {
+    $newnode = $node;
+    $node = node_load($extra_ops);
+
+    erp_transfer_data($node, $newnode, 'erp_purchase_order');
+  }
+  elseif ($extra_ops == 'erp-cart') {
+    erp_cart_load($node);
+  }
+
+  // Default to the current user.
+  if (!$node->owner) {
+    $node->owner = $user->name;
+  }
+
+  //try to guess supplier from items
+  if (!$node->supplier && $node->entries['item'][0]) {
+    $item_node = node_load($node->entries['item'][0]);
+    if ($item_node) {
+      $supplier_node = node_load($item_node->supplier_nid);
+      if ($supplier_node) {
+        $supplier = erp_supplier_id_to_name($supplier_node->supplier_id);
+        $node->supplier_nid = $supplier_node->nid;
+      }
+    }
+  }
+  else{
+    $supplier = $node->supplier;
+    $supplier_node = erp_supplier_name_to_node($supplier);
+    $node->supplier_nid = $supplier_node->nid;
+  }
+
+  if (!$node->title) {
+    $node->title = $user->name . ' - ' . date("d/m/Y");
+  }
+
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => check_plain($type->title_label),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['purchase_order_details'] =
+    array('#prefix' => '<div class="purchase-order-details">',
+          '#type' => 'fieldset',
+          '#title' => 'Purchase Order Details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->purchase_order_id) {
+    $form['purchase_order_details']['purchase_order_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'p/order id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->purchase_order_id);
+  }
+
+  $form['purchase_order_details']['customer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Customer'),
+          '#default_value' => $node->customer,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['customer_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->customer_nid);
+
+  $form['purchase_order_details']['supplier'] =
+    array('#type' => 'textfield',
+          '#title' => t('Supplier'),
+          '#default_value' => $supplier,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/supplier/autocomplete');
+
+  $form['supplier_id'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->supplier_id);
+
+  $form['entries'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Current Purchase Order Items'),
+          '#tree' => TRUE,
+          '#theme' => 'entries',
+          '#collapsible' => FALSE,
+          '#prefix' => '<div id="entries">',
+          '#suffix' => '</div>');
+
+  erp_add_newline($node, $form_state);
+
+  // Now actually display the rows
+  for ($i = 0; $i < count($node->entries['qty']); $i++) {
+    $form['entries']['line'][$i] =
+      array('#type' => 'hidden',
+            '#attributes' => array('class' => 'entry-line'),
+            '#default_value' => ($i + 1));
+
+    $form['entries']['qty'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 6,
+            '#maxlength' => 6,
+            '#default_value' => $node->entries['qty'][$i],
+            '#prefix' => '<div class="qty">',
+            '#suffix' => '</div>');
+
+    $form['entries']['item'][$i] =
+      array('#type' => 'hidden',
+            '#default_value' => $node->entries['item'][$i]);
+
+    $form['entries']['item_desc'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 20,
+            '#maxlength' => 255,
+            '#autocomplete_path' => 'erp/item/autocomplete/buy',
+            '#default_value' => $node->entries['item_desc'][$i],
+            '#prefix' => '<div class="item-desc">',
+            '#suffix' => '</div>');
+
+    $form['entries']['extra'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 40,
+            '#maxlength' => 4096,
+            '#default_value' => $node->entries['extra'][$i],
+            '#prefix' => '<div class="extra">',
+            '#suffix' => '</div>');
+
+    $form['entries']['price'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 12,
+            '#maxlength' => 12,
+            '#value' => erp_currency($node->entries['price'][$i]),
+            '#prefix' => '<div class="price">',
+            '#suffix' => '</div>');
+
+    // Remove button.
+    $form['entries']['delete'][$i] = array(
+      '#type' => 'submit',
+      '#name' => 'delete_' . $i,
+      '#value' => t('X'),
+      '#weight' => 1,
+      '#submit' => array('erp_remove_line_submit'),
+      '#ahah' => array(
+        'path' => 'erp/linejs/' . ($i + 1),
+        'wrapper' => 'entries',
+        'method' => 'replace',
+        'effect' => 'none'
+      ),
+    );
+
+    $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+  }
+
+  $form['entries']['total'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="total">',
+          '#title' => 'Total Price',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => erp_currency($total_price),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline'] =
+    array('#type' => 'fieldset',
+          '#prefix' => '<div class="newline">',
+          '#tree' => TRUE,
+          '#theme' => 'newline',
+          '#title' => t('New Purchase Order Line'),
+          '#collapsible' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['qty'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="qty">',
+          '#size' => 6,
+          '#maxlength' => 6,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item_desc'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="item-desc">',
+          '#size' => 20,
+          '#maxlength' => 255,
+          '#autocomplete_path' => 'erp/item/autocomplete/buy',
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['extra'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="extra">',
+          '#size' => 40,
+          '#maxlength' => 4096,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['price'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="price">',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item'] =
+    array('#type' => 'hidden',
+          '#default_value' => '');
+
+  $form['entries']['newline']['addline'] =
+    array('#type' => 'submit',
+          '#prefix' => '<div class="addline">',
+          '#name' => 'addline',
+          '#value' => t('Add line/Recalc'),
+          '#submit' => array('erp_add_newline_submit'),
+          '#ahah' => array(
+            'path' => 'erp/linejs/0',
+            'wrapper' => 'entries',
+            'method' => 'replace',
+            'effect' => 'none'
+          ),
+          '#suffix' => '</div>');
+
+  $form['#validate'][] = 'erp_purchase_order_custom_validate';
+
+  $form['#action'] = erp_fix_ahah_action($node);
+
+  return $form;
+}
+
+function erp_purchase_order_custom_validate(&$form, &$form_state) {
+  if ($form_state['clicked_button']['#id'] == 'edit-submit') {
+    erp_customer_field_validate($form_state, t('purchase order'));
+
+    erp_newline_fields_validate($form_state);
+  }
+}
+
+/**
+ * Helper function to insert purchase_order data after node submission
+ *
+ * @param unknown_type $node
+ */
+function _insert_purchase_order_data($node) {
+  // Clear out old entries.
+  db_query("DELETE FROM {erp_purchase_order_data} WHERE nid = %d", $node->nid);
+
+  // Insert new entries
+  if (is_array($node->entries['qty'])) {
+    for ($i = 0 ; $i < count($node->entries['qty']); $i++) {
+      if (!empty($node->entries['qty'][$i]) and !empty($node->entries['item_desc'][$i])) {
+        // first check if the item is in stock?
+        // node load, searching for title = info given by form row
+        list($supplier_id, $stock_code, $desc, $price) = erp_item_desc_breakup($node->entries['item_desc'][$i]);
+        $supplier_nid = erp_id_to_nid('supplier', $supplier_id);
+
+        $result = db_query("SELECT COUNT(*) FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE s.code = '%s' and supplier_nid = %d", $stock_code, $supplier_nid);
+        if (db_fetch_object($result) == 1) {
+          $result = db_query("SELECT * FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE s.code = '%s' and supplier_nid = %d", $stock_code, $supplier_nid);
+          $stock_node = db_fetch_object($result);
+        }
+        else {
+          watchdog('erp-purchase-order', 'erp_item: non unique erp_item - '. $stock_code);
+        }
+
+        $line = array(
+          'nid' => $node->nid,
+          'line' => $i,
+          'item_nid' => $stock_node->nid,
+          'extra' => $node->entries['extra'][$i],
+          'qty' => $node->entries['qty'][$i],
+          'price' => $node->entries['price'][$i],
+        );
+
+        drupal_write_record('erp_purchase_order_data', $line);
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_insert().
+ *
+ * As a new node is being inserted into the database, we need to do our own
+ * database inserts.
+ */
+function erp_purchase_order_insert(&$node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $supplier = erp_supplier_name_to_node($node->supplier);
+
+  $node->customer_nid = $customer->nid;
+  $node->supplier_nid = $supplier->nid;
+
+  $node->total = erp_get_total($node);
+
+  // save to the invoice table
+  drupal_write_record('erp_purchase_order', $node);
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into purchase_order_data table
+  _insert_purchase_order_data($node);
+
+  module_invoke_all('erp_purchase_order_save', $node);
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * As an existing node is being updated in the database, we need to do our own
+ * database updates.
+ */
+function erp_purchase_order_update($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $supplier = erp_supplier_name_to_node($node->supplier);
+
+  $node->customer_nid = $customer->nid;
+  $node->supplier_nid = $supplier->nid;
+
+  $node->total = erp_get_total($node);
+
+  // save to the invoice table
+  drupal_write_record('erp_purchase_order', $node, array('purchase_order_id'));
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into purchase_order_data table
+  _insert_purchase_order_data($node, $node->purchase_order_id);
+
+  module_invoke_all('erp_purchase_order_save', $node);
+
+  // Mark it open after update, always.
+  erp_open('purchase_order', $node->nid);
+}
+
+/**
+ * Implementation of hook_delete().
+ *
+ * When a node is deleted, we need to clean up related tables.
+ */
+function erp_purchase_order_delete($node) {
+  db_query('DELETE FROM {erp_purchase_order} WHERE nid = %d', $node->nid);
+  db_query('DELETE FROM {erp_purchase_order_data} WHERE nid = %d', $node->nid);
+
+  module_invoke_all('erp_purchase_order_delete', $node);
+}
+
+/**
+ * Implementation of hook_load().
+ *
+ * Now that we've defined how to manage the node data in the database, we
+ * need to tell Drupal how to get the node back out. This hook is called
+ * every time a node is loaded, and allows us to do some loading of our own.
+ */
+function erp_purchase_order_load(&$node) {
+  $purchase_order = db_fetch_object(db_query('SELECT * FROM {erp_purchase_order} WHERE nid = %d', $node->nid));
+
+  // Now load all the purchase_order entries
+  $result = db_query('SELECT * FROM {erp_purchase_order_data} WHERE nid = %d ORDER BY line ASC', $node->nid);
+
+  while ($purchase_order_data = db_fetch_array($result)) {
+    $purchase_order->entries['item'][] = $purchase_order_data['item_nid'];
+
+    $item = node_load($purchase_order_data['item_nid']);
+
+    $purchase_order->entries['item_desc'][] = erp_item_desc_build($item);
+    $purchase_order->entries['price'][] = $purchase_order_data['price'];
+    $purchase_order->entries['extra'][] = $purchase_order_data['extra'];
+    $purchase_order->entries['qty'][] = $purchase_order_data['qty'];
+  }
+
+  return $purchase_order;
+}
+
+function erp_purchase_order_erp_extra_info($node) {
+  $output = '';
+
+  if ($node->purchase_order_id && $node->type != 'erp_purchase_order') {
+    $link = l($node->purchase_order_id, 'node/'. erp_id_to_nid('purchase_order', $node->purchase_order_id));
+
+    $output .= '<div class="purchase_order">';
+    $output .= t('Purchase Order: ') . $link;
+    $output .= '</div>';
+  }
+
+  return $output;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_purchase_order_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_purchase_order_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function erp_purchase_order_theme() {
+  return array(
+    'erp_purchase_order_info' => array(
+      'arguments' => array('node' => NULL),
+    )
+  );
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_purchase_order_info($node) {
+  if ($node->printing) {
+    return erp_print_info($node);
+  }
+  else {
+    return erp_screen_info($node);
+  }
+}
+
+function erp_purchase_order_views_api() {
+  return array('api' => 2.0);
+}

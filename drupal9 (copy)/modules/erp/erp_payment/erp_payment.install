@@ -1,0 +1,127 @@
+<?php
+
+function erp_payment_install() {
+  drupal_install_schema('erp_payment');
+
+  // Insert default payment types
+  db_query("INSERT INTO {erp_payment_types} (type, description) VALUES(1, 'Cash')");
+  db_query("INSERT INTO {erp_payment_types} (type, description) VALUES(2, 'Eftpos')");
+  db_query("INSERT INTO {erp_payment_types} (type, description) VALUES(3, 'Credit Card')");
+  db_query("INSERT INTO {erp_payment_types} (type, description) VALUES(4, 'Cheque')");
+  db_query("INSERT INTO {erp_payment_types} (type, description) VALUES(5, 'Direct Deposit')");
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6001 WHERE name = 'erp_payment'");
+}
+
+function erp_payment_schema() {
+  $schema['erp_payment'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'payment_id' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10'),
+      'total' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20')),
+    'primary key' => array('nid'),
+    'unique keys' => array(
+      'payment_id' => array('payment_id')),
+  );
+
+  $schema['erp_payment_data'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'line' => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'disp-width' => '4'),
+      'invoice_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'payment_amount' => array('type' => 'float', 'not null' => FALSE, 'default' => 0, 'disp-width' => '20'),
+      'payment_type' => array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'disp-width' => '2'),
+      'payment_date' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '12')),
+    'primary key' => array('nid', 'line'),
+  );
+
+  $schema['erp_payment_types'] = array(
+    'fields' => array(
+      'type' => array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'disp-width' => '2'),
+      'description' => array('type' => 'char', 'length' => '255', 'not null' => FALSE)),
+    'primary key' => array('type'),
+  );
+
+  return $schema;
+}
+
+function erp_payment_update_6001() {
+  $ret = array();
+
+  // Fix payment id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_payment} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_payment} ADD UNIQUE (payment_id)");
+
+  $high_payment = db_result(db_query("SELECT MAX(payment_id) FROM {erp_payment}"));
+  $ret[] = update_sql("ALTER TABLE {erp_payment} CHANGE COLUMN payment_id payment_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_payment} AUTO_INCREMENT = ". $high_payment++);
+
+  // Now look through all the payments and update the erp_payment_data table with their nid
+  $ret[] = update_sql("ALTER TABLE {erp_payment_data} ADD COLUMN nid INT(10) NOT NULL FIRST");
+  $result = db_query("SELECT nid, payment_id FROM {erp_payment} ORDER BY payment_id ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_payment_data} SET nid = ". $row['nid'] ." WHERE payment_id = ". $row['payment_id'];
+    $ret[] = update_sql($sql);
+  }
+
+  $ret[] = update_sql("ALTER TABLE {erp_payment_data} ADD COLUMN invoice_nid int(10) NOT NULL AFTER line");
+  $result = db_query("SELECT nid, invoice_id FROM {erp_payment_data}");
+  while ($row = db_fetch_array($result)) {
+    $nid = erp_id_to_nid('invoice', $row['invoice_id']);
+    if ($nid) {
+      $sql = "UPDATE {erp_payment_data} SET invoice_nid = ". $nid ." WHERE nid = ". $row['nid'] ." AND invoice_id = ". $row['invoice_id'];
+      $ret[] = update_sql($sql);
+    }
+  }
+
+  $ret[] = update_sql("ALTER TABLE {erp_payment} CHANGE COLUMN customer_id customer_nid INT(10) NOT NULL");
+  $ret[] = update_sql("ALTER TABLE {erp_payment_data} CHANGE COLUMN type payment_type INT(2) NOT NULL");
+  $ret[] = update_sql("ALTER TABLE {erp_payment_data} DROP COLUMN invoice_id");
+  $ret[] = update_sql("ALTER TABLE {erp_payment_data} DROP COLUMN payment_id");
+
+
+  // Now loop through and update all dates
+  $result = db_query("SELECT * FROM {erp_payment_data} ORDER BY date_received ASC");
+  while ($row = db_fetch_array($result)) {
+    if ($row['date_received']) {
+      if (stristr($row['date_received'], '-')) {
+        $row['date_received'] = str_replace('/', '-', $row['date_received']);
+        list($year, $mon, $day) = explode('-', $row['date_received']);
+      }
+      elseif (stristr($row['date_received'], '/')) {
+        list($day, $mon, $year) = explode('/', $row['date_received']);
+      }
+      if (strlen($year) < 4) {
+        $year = '200'. intval($year);
+      }
+      $completed_date = implode('-', array($year, $mon, $day));
+      if ($completed_date != '') {
+        $ret[] = update_sql("UPDATE {erp_payment_data} SET date_received = ".  date_convert($completed_date, DATE_DATETIME, DATE_UNIX) ." WHERE nid = ". $row['nid'] ." AND line = ". $row['line']);
+      }
+    }
+  }
+
+  // Now cleanup fields
+  $ret[] = update_sql("ALTER TABLE {erp_payment_data} CHANGE COLUMN date_received payment_date INT(12) NOT NULL");
+
+  return $ret;
+}
+
+function erp_payment_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_payment} ADD COLUMN total FLOAT(20,5) NOT NULL DEFAULT 0");
+
+  $result = db_query("SELECT nid from {erp_payment} ORDER BY nid ASC");
+  while ($row = db_fetch_array($result)) {
+    $amount = db_result(db_query("SELECT sum(payment_amount) AS amount FROM {erp_payment_data} WHERE nid = %d", $row['nid']));
+    if ($amount) {
+      $ret[] = update_sql("UPDATE {erp_payment} SET total = ". $amount ." WHERE nid = ". $row['nid']);
+    }
+  }
+
+  return $ret;
+}

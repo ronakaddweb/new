@@ -1,0 +1,782 @@
+<?php
+// $Id: erp_goods_receive.module,v 1.18.2.16 2011/01/14 00:55:04 simon Exp $
+/**
+ * @file
+ *
+ * goods_receive module
+ */
+
+/**
+ * Help function for goods_receive module
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_goods_receive_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP goods receive module.');
+      break;
+    case 'node/add#erp_goods_receive':
+      // This description shows up when users click "create content."
+      return t('ERP goods receive.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * goods_receive node name
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_goods_receive_node_name($node) {
+  return t('erp goods receive');
+}
+
+/**
+ * Implementation of goods_receive_node_info
+ *
+ * @return array of information
+ */
+function erp_goods_receive_node_info() {
+  return array('erp_goods_receive' =>
+               array('name' => t('erp goods receive'),
+                     'module' => 'erp_goods_receive',
+                     'description' => t('ERP Goods receive'),
+                     'title_label' => t('Goods received by'),
+                     'has_body' => TRUE));
+}
+
+/**
+ * Implementation of hook_link().
+ *
+ * This is implemented so that an edit link is displayed for users who have
+ * the rights to edit a node.
+ */
+function erp_goods_receive_link($type, $node = 0, $main) {
+
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_goods_receive') {
+    $links = array_merge($links, module_invoke_all('erp_goods_receive_link', $node));
+  }
+
+  return $links;
+}
+
+/**
+ * Return whether the user has access to a function or not.
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_goods_receive_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('add goods_receipt', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit goods_receipt')) {
+        return TRUE;
+      }
+
+      if (user_access('edit own goods_receipt', $account) && ($account->uid == $node->uid)) {
+        return TRUE;
+      }
+      break;
+
+    case 'view':
+      if (user_access('view goods_receipt', $account)) {
+        return TRUE;
+      }
+      break;
+  }
+  return FALSE;
+}
+
+/**
+ * goods_receive permissions
+ *
+ * @return unknown
+ */
+function erp_goods_receive_perm() {
+  return array(
+    'add goods_receipt',
+    'edit goods_receipt',
+    'edit own goods_receipt',
+    'admin goods_receive',
+    'view goods_receipt',
+  );
+}
+
+function erp_goods_receive_erp_purchase_order_link($node) {
+  if ($node->purchase_order_status != 'C') {
+    $links['erp_goods_receive_link'] =
+      array('title' => t('goods receive'),
+            'href' => "node/add/erp-goods-receive/". $node->nid,
+            'attributes' => array('title' => t('Receive this Purchase Order.')));
+    return $links;
+  }
+}
+
+function erp_goods_receive_menu() {
+  $items['admin/erp/goods_receive'] = array(
+    'title' => 'Goods receive',
+    'description' => 'Configure erp goods receive settings',
+    'access arguments' => array('admin goods_receive'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_goods_receive_admin_settings')
+  );
+
+  return $items;
+}
+
+function erp_goods_receive_erp_quickjump_g($number) {
+  $nid = erp_id_to_nid('goods_receive', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Goods Receipt not found');
+    return '';
+  }
+}
+
+function erp_goods_receive_erp_purchase_order_info($node) {
+  // Figure out if there have been any goods receipts
+  $result = db_query("SELECT egr.goods_receive_id, egr.nid FROM {erp_goods_receive_data} egrd LEFT JOIN {erp_goods_receive} egr ON egrd.nid = egr.nid WHERE egr.purchase_order_nid = '%d'", $node->nid);
+  while ($row = db_fetch_array($result)) {
+    $goods_receive_id = $row['goods_receive_id'];
+    $goods_receive_ids[] = l($goods_receive_id, 'node/'. $row['nid']);
+  }
+
+  $output .= '<div class="closed">';
+  $output .= t('Closed/Paid: ') . ($node->purchase_order_status ? t('Yes') : t('No'));
+  $output .= '</div>';
+
+  // Display them
+  if (count($goods_receive_ids)) {
+    $output .= '<div class=erp-goods-receipt>';
+    $output .= t('Goods receipts: ') . implode(', ', array_unique($goods_receive_ids));
+    $output .= '</div>';
+  }
+
+  return $output;
+}
+
+function erp_goods_receive_erp_quickjump_info() {
+  return array('erp_goods_receive' => t('g-xxx - load a goods receipt using its number.'));
+}
+
+function erp_goods_receive_form(&$node, $form_state) {
+  global $user;
+
+  drupal_add_js(drupal_get_path('module', 'erp') .'/erp.js', 'footer');
+  drupal_add_tabledrag('draggable-entries', 'order', 'sibling', 'entry-line');
+
+  $type = node_get_types('type', $node);
+
+  $total_price = 0;
+
+  // If this is being created from a quote, load the node data from that now.
+  $po_nid = arg(3);
+  if (is_numeric($po_nid)) {
+    $newnode = $node;
+    $node = node_load($po_nid);
+
+    erp_transfer_data($node, $newnode, 'erp_goods_receive');
+    $node->purchase_order_nid = $po_nid;
+  }
+  else {
+    // Existing po nid
+    $po_nid = $node->purchase_order_nid;
+  }
+
+  erp_set_customer($node);
+
+  // Default to the current user.
+  if (!$node->owner) {
+    $node->owner = $user->name;
+  }
+
+  if (!$node->title) {
+    $node->title = $user->name .' - '. date("d/m/Y");
+  }
+
+  // Convert multiple quantities to individual ones.
+  $entry_total = 0;
+
+  // Rebuild the list of entries
+  if (!$form_state['submitted']) {
+    if (!$node->nid) {
+      // Maybe this should be configurable based on item (type)
+      for ($i = 0; $i < count($node->entries['qty']); $i++) {
+        $item = $node->entries['item'][$i];
+        $count = $node->entries['qty'][$i] - erp_goods_receive_check_already_received($node, $item);
+        for ($j = 0; $j < $count; $j++) {
+          $newentries['qty'][$entry_total] = 1;
+          $newentries['item'][$entry_total] = $node->entries['item'][$i];
+          $newentries['item_desc'][$entry_total] = $node->entries['item_desc'][$i];
+          $newentries['price'][$entry_total] = $node->entries['price'][$i];
+          $newentries['serial'][$entry_total] = $node->entries['serial'][$i];
+          $entry_total++;
+        }
+      }
+      $node->entries = $newentries;
+    }
+    else {
+      $newentries = array();
+      // Saved will be displayed. Should we try and generate the rest?
+      $po_node = node_load($po_nid);
+      for ($i = 0; $i < count($po_node->entries['qty']); $i++) {
+        $item = $po_node->entries['item'][$i];
+        $count = $po_node->entries['qty'][$i] - erp_goods_receive_check_already_received($node, $item);
+        for ($j = 0; $j < $count; $j++) {
+          $newentries['qty'][$entry_total] = 1;
+          $newentries['item'][$entry_total] = $po_node->entries['item'][$i];
+          $newentries['item_desc'][$entry_total] = $po_node->entries['item_desc'][$i];
+          $newentries['price'][$entry_total] = $po_node->entries['price'][$i];
+          $newentries['serial'][$entry_total] = $po_node->entries['serial'][$i];
+          $entry_total++;
+        }
+      }
+      // Append the new outstanding things from the po onto the end of the nodes existing entries
+      if (count($newentries)) {
+        foreach ($node->entries as $key => $data) {
+          $node->entries[$key] = array_merge($node->entries[$key], $newentries[$key]);
+        }
+      }
+    }
+  }
+
+  // Load supplier info
+  if ($node->supplier_id) {
+    $supplier = node_load($node->supplier_id);
+    $node->supplier = $supplier->title;
+  }
+
+  if ($po_nid) {
+    $pos = db_result(db_query("SELECT purchase_order_status FROM {erp_purchase_order} WHERE purchase_order_id = %d", $node->purchase_order_id));
+    if ($pos == 'C') {
+      $node->purchase_order_status = TRUE;
+    }
+    else {
+      $node->purchase_order_status = FALSE;
+    }
+  }
+
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => check_plain($type->title_label),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['goods_receive_details'] =
+    array('#prefix' => '<div class="goods-receive-details">',
+          '#type' => 'fieldset',
+          '#title' => 'goods receive details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->goods_receive_id) {
+    $form['goods_receive_details']['goods_receive_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'goods receive id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->goods_receive_id);
+  }
+
+  $form['goods_receive_details']['purchase_order_id'] =
+    array('#type' => 'textfield',
+          '#title' => t('Purchase order no'),
+          '#size' => 20,
+          '#disabled' => TRUE,
+          '#default_value' => erp_nid_to_id('purchase_order', $po_nid));
+
+  $form['goods_receive_details']['purchase_order_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $po_nid);
+
+  $form['goods_receive_details']['customer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Customer'),
+          '#default_value' => $node->customer,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['goods_receive_details']['customer_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->customer_nid);
+
+  $form['goods_receive_details']['supplier'] =
+    array('#type' => 'textfield',
+          '#title' => t('Supplier'),
+          '#default_value' => $node->supplier,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/supplier/autocomplete');
+
+  $form['goods_receive_details']['invoice_no'] =
+    array('#type' => 'textfield',
+          '#title' => t('Invoice No'),
+          '#default_value' => $node->invoice_no,
+          '#size' => 50);
+
+  $form['entries'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Goods receive items'),
+          '#tree' => TRUE,
+          '#theme' => 'entries',
+          '#collapsible' => FALSE,
+          '#prefix' => '<div id="entries">',
+          '#suffix' => '</div>');
+
+  erp_add_newline($node, $form_state);
+
+  // Now actually display the rows
+  for ($i = 0; $i < count($node->entries['qty']); $i++) {
+    $form['entries']['line'][$i] =
+      array('#type' => 'hidden',
+            '#attributes' => array('class' => 'entry-line'),
+            '#default_value' => ($i + 1));
+
+    $form['entries']['qty'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 6,
+            '#maxlength' => 6,
+            '#default_value' => $node->entries['qty'][$i]);
+
+    $form['entries']['item'][$i] =
+      array('#type' => 'hidden',
+            '#default_value' => $node->entries['item'][$i]);
+
+    $form['entries']['item_desc'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 20,
+            '#maxlength' => 255,
+            '#autocomplete_path' => 'erp/item/autocomplete/buy',
+            '#default_value' => $node->entries['item_desc'][$i]);
+
+    if (variable_get('erp_goods_receive_serial', FALSE)) {
+      $form['entries']['serial'][$i] =
+        array('#type' => 'textfield',
+              '#size' => 20,
+              '#maxlength' => 50,
+              '#default_value' => $node->entries['serial'][$i]);
+    }
+
+    $form['entries']['price'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => erp_currency($node->entries['price'][$i]));
+
+    // Remove button.
+    $form['entries']['delete'][$i] = array(
+      '#type' => 'submit',
+      '#name' => 'delete_' . $i,
+      '#value' => t('X'),
+      '#weight' => 1,
+      '#submit' => array('erp_remove_line_submit'),
+      '#ahah' => array(
+        'path' => 'erp/linejs/' . ($i + 1),
+        'wrapper' => 'entries',
+        'method' => 'replace',
+        'effect' => 'none'
+      ),
+    );
+
+    $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+  }
+
+  $form['entries']['total'] =
+    array('#type' => 'textfield',
+          '#title' => 'Total Price',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#value' => erp_currency($total_price));
+
+  $form['entries']['newline'] =
+    array('#type' => 'fieldset',
+          '#prefix' => '<div class="newline">',
+          '#tree' => TRUE,
+          '#theme' => 'newline',
+          '#title' => t('New Goods Receive Line'),
+          '#collapsible' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['qty'] =
+    array('#type' => 'textfield',
+          '#size' => 6,
+          '#maxlength' => 6,
+          '#default_value' => '',
+          );
+
+  $form['entries']['newline']['item_desc'] =
+    array('#type' => 'textfield',
+          '#size' => 20,
+          '#maxlength' => 255,
+          '#autocomplete_path' => 'erp/item/autocomplete/buy',
+          '#default_value' => '',
+          );
+
+  $form['entries']['newline']['price'] =
+    array('#type' => 'textfield',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => '',
+          );
+
+  $form['entries']['newline']['item'] =
+    array('#type' => 'hidden',
+          '#default_value' => '');
+
+  if (variable_get('erp_goods_receive_serial', FALSE)) {
+    $form['entries']['newline']['serial'] =
+      array('#type' => 'textfield',
+            '#size' => 20,
+            '#maxlength' => 50,
+            '#default_value' => $node->entries['serial'][$i]);
+  }
+
+  $form['entries']['newline']['addline'] =
+    array('#type' => 'submit',
+          '#prefix' => '<div class="addline">',
+          '#name' => 'addline',
+          '#value' => t('Add line/Recalc'),
+          '#submit' => array('erp_add_newline_submit'),
+          '#ahah' => array(
+            'path' => 'erp/linejs/0',
+            'wrapper' => 'entries',
+            'method' => 'replace',
+            'effect' => 'none'
+          ),
+          '#suffix' => '</div>');
+
+  if (module_exists('erp_purchase_order')) {
+    $form['po_closed'] =
+      array('#type' => 'checkbox',
+            '#default_value' => $node->purchase_order_status,
+            '#title' => t('Mark purchase order as closed?'));
+  }
+
+  //$form['#validate'][] = 'erp_goods_receive_custom_validate';
+
+  $form['#action'] = erp_fix_ahah_action($node);
+
+  return $form;
+}
+
+function erp_goods_receive_theme() {
+  return array(
+    'erp_goods_receive_info' => array(
+      'arguments' => array('form' => NULL),
+    ),
+  );
+}
+
+function erp_goods_receive_check_already_received($node, $item) {
+  $index = array_search($item, $node->entries['item']);
+  $count = db_result(db_query("SELECT count(stock_id) as count FROM {erp_stock} WHERE (stock_nid = %d AND purchase_order_nid = %d) OR (stock_nid = %d AND receipt_nid = %d)", $node->entries['item'][$index], $node->purchase_order_nid, $node->entries['item'][$index], $node->nid));
+
+  return $count;
+}
+
+/**
+ * Helper function to display goods_receive entries.
+ *
+ * @param unknown_type $form
+ * @return unknown
+ */
+function theme_erp_goods_receive_entries($form) {
+  $rows = array();
+
+  if (variable_get('erp_goods_receive_serial', FALSE)) {
+    $header = array(t('Qty'), t('Stock Code'), t('Serial'), t('Price'));
+    foreach (element_children($form['qty']) as $key) {
+      $rows[] = array(drupal_render($form['qty'][$key]),
+                      drupal_render($form['item_desc'][$key]),
+                      drupal_render($form['serial'][$key]),
+                      drupal_render($form['price'][$key]) .
+                      drupal_render($form['item'][$key]));
+    }
+    $rows[] = array(array(), array(), array(), drupal_render($form['total']));
+  }
+  else {
+    $header = array(t('Qty'), t('Stock Code'), t('Price'));
+    foreach (element_children($form['qty']) as $key) {
+      $rows[] = array(drupal_render($form['qty'][$key]),
+                      drupal_render($form['item_desc'][$key]),
+                      drupal_render($form['price'][$key]) .
+                      drupal_render($form['item'][$key]));
+    }
+
+    $rows[] = array(array(), array(), drupal_render($form['total']));
+  }
+
+  $output .= theme('table', $header, $rows);
+
+  $output .= drupal_render($form);
+
+  return $output;
+}
+
+/**
+ * Implementation of hook_insert().
+ *
+ * As a new node is being inserted into the database, we need to do our own
+ * database inserts.
+ */
+function erp_goods_receive_insert(&$node) {
+
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $supplier = erp_supplier_name_to_node($node->supplier);
+
+  $node->customer_nid = $customer->nid;
+  $node->supplier_nid = $supplier->nid;
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into goods_receive_data table
+  _insert_erp_goods_receive_data($node);
+
+  //insert identifying data into goods_receive table
+  drupal_write_record('erp_goods_receive', $node);
+
+  module_invoke_all('erp_goods_receive_save', $node);
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * As an existing node is being updated in the database, we need to do our own
+ * database updates.
+ */
+function erp_goods_receive_update($node) {
+
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $supplier = erp_supplier_name_to_node($node->supplier);
+
+  $node->customer_nid = $customer->nid;
+  $node->supplier_nid = $supplier->nid;
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into purchase_order_data table
+  _insert_erp_goods_receive_data($node, $node->goods_receive_id);
+
+  drupal_write_record('erp_goods_receive', $node, array('goods_receive_id'));
+
+  module_invoke_all('erp_goods_receive_save', $node);
+}
+
+/**
+ * Implementation of hook_delete().
+ *
+ * When a node is deleted, we need to clean up related tables.
+ */
+function erp_goods_receive_delete($node) {
+  db_query('DELETE FROM {erp_goods_receive} WHERE nid = %d', $node->nid);
+  db_query('DELETE FROM {erp_goods_receive_data} WHERE nid = %d', $node->nid);
+
+  module_invoke_all('erp_goods_receive_delete', $node);
+}
+
+function _insert_erp_goods_receive_data($node) {
+  if (module_exists('erp_stock')) {
+    // Remove old stock entries in case this is an edit.
+    db_query("DELETE FROM {erp_stock} WHERE receipt_nid = %d", $node->nid);
+  }
+
+  // Clear out old entries.
+  db_query("DELETE FROM {erp_goods_receive_data} WHERE nid = %d", $node->nid);
+
+  // Load the store nid
+  $store_nid = erp_id_to_nid('store', $node->store_id);
+
+  // Insert new entries
+  if (is_array($node->entries['qty'])) {
+    for ($i = 0 ; $i < count($node->entries['qty']); $i++) {
+      if (!empty($node->entries['qty'][$i]) and !empty($node->entries['item_desc'][$i])) {
+        $item_info = erp_item_desc_breakup($node->entries['item_desc'][$i]);
+        $supplier_id = $item_info[0];
+        $stock_code = $item_info[1];
+
+        $supplier_nid = erp_id_to_nid('supplier', $supplier_id);
+
+        $nid = db_query("SELECT n.nid FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE s.code = '%s' and supplier_nid = %d", $stock_code, $supplier_nid);
+        if ($nid) {
+          $stock_node = db_fetch_object($nid);
+        }
+        else {
+          drupal_set_message(t('Error inserting goods receive record'));
+        }
+
+        $line = array(
+          'nid' => $node->nid,
+          'line' => $i,
+          'item_nid' => $stock_node->nid,
+          'qty' => $node->entries['qty'][$i],
+          'price' => $node->entries['price'][$i],
+          'serial' => $node->entries['serial'][$i],
+          'receipt_nid' => $node->nid,
+          'store_nid' => $store_nid,
+          'purchase_order_nid' => $node->purchase_order_nid,
+        );
+
+        drupal_write_record('erp_goods_receive_data', $line);
+
+        module_invoke_all('erp_goods_receive_entry', $line);
+      }
+    }
+  }
+
+  // Need to know the purchase order here so we can close it.
+  if ($node->po_closed) {
+    erp_close('purchase_order', $node->purchase_order_nid);
+  }
+}
+
+/**
+ * Implementation of hook_load().
+ *
+ * Now that we've defined how to manage the node data in the database, we
+ * need to tell Drupal how to get the node back out. This hook is called
+ * every time a node is loaded, and allows us to do some loading of our own.
+ */
+function erp_goods_receive_load(&$node) {
+  $goods_receive = db_fetch_object(db_query('SELECT * FROM {erp_goods_receive} WHERE nid = %d', $node->nid));
+
+  // Now load all the goods_receive entries
+  $result = db_query('SELECT * FROM {erp_goods_receive_data} WHERE nid = %d ORDER BY line ASC', $node->nid);
+
+  while ($goods_receive_data = db_fetch_array($result)) {
+    $goods_receive->entries['item'][] = $goods_receive_data['item_nid'];
+    $goods_receive->entries['item_desc'][] = erp_item_desc_build(node_load($goods_receive_data['item_nid']));
+    $goods_receive->entries['price'][] = $goods_receive_data['price'];
+    $goods_receive->entries['qty'][] = $goods_receive_data['qty'];
+    $goods_receive->entries['serial'][] = $goods_receive_data['serial'];
+  }
+
+  return $goods_receive;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_goods_receive_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_goods_receive_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_goods_receive_info($node) {
+  $output = '<div class="goods_receive-info">';
+
+  $output .= '<div class="goods_receive_id">';
+  $output .= t('Goods Receive id: ') . $node->goods_receive_id;
+  $output .= '<br />';
+  $output .= t('Purchase order Number: ') . l(erp_nid_to_id('purchase_order', $node->purchase_order_nid), 'node/'. $node->purchase_order_nid);
+  $output .= '</div>';
+
+  $output .= implode(module_invoke_all('erp_extra_info', $node));
+
+  $rows = array();
+
+  if (variable_get('erp_goods_receive_serial', FALSE)) {
+    $header = array(t('Qty'), t('Stock Code'), t('Desc'), t('Serial'), t('Price'));
+
+    for ($i = 0 ; $i < count($node->entries['qty']) ; $i++) {
+      $item_node = node_load($node->entries['item'][$i]);
+      if ($item_node) {
+        $desc = check_plain($item_node->title);
+      }
+      else {
+        $desc = "Unknown item node for ". $node->entries['item'][$i];
+      }
+      $rows[] = array($node->entries['qty'][$i],
+                      $node->entries['item'][$i],
+                      $desc,
+                      $node->entries['serial'][$i],
+                      erp_currency($node->entries['price'][$i]));
+
+      // Build a total price
+      $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+    }
+
+    $rows[] = array(array(), array(), array(), "Total: ", erp_currency($total_price));
+  }
+  else {
+    $header = array(t('Qty'), t('Stock Code'), t('Desc'), ('Price'));
+
+    for ($i = 0 ; $i < count($node->entries['qty']) ; $i++) {
+      $item_node = node_load($node->entries['item'][$i]);
+      if ($item_node) {
+        $desc = check_plain($item_node->title);
+      }
+      else {
+        $desc = "Unknown item node for ". $node->entries['item'][$i];
+      }
+      $rows[] = array($node->entries['qty'][$i],
+                      $node->entries['item'][$i],
+                      $desc,
+                      erp_currency($node->entries['price'][$i]));
+
+      // Build a total price
+      $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+    }
+
+    $rows[] = array(array(), array(), "Total: ", erp_currency($total_price));
+  }
+
+  $output .= theme('table', $header, $rows);
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+function erp_goods_receive_admin_settings() {
+  drupal_set_title(t('Goods receive settings'));
+
+  $form['erp_goods_receive_serial'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Record serial numbers with received items?'),
+          '#default_value' => variable_get('erp_goods_receive_serial', FALSE));
+
+  $form += erp_set_next_id_form('erp_goods_receive', 'goods_receive');
+
+  return system_settings_form($form);
+}

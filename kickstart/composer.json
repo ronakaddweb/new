@@ -1,0 +1,149 @@
+{
+    "name": "centarro/commerce-kickstart-project",
+    "description": "Centarro Commerce Kickstart 3.x project template",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Centarro",
+            "role": "info@centarro.io"
+        }
+    ],
+    "repositories": {
+        "commerce_demo": {
+            "type": "vcs",
+            "url": "https://git.drupalcode.org/project/commerce_demo.git"
+        },
+        "jquery-ui-touch-punch": {
+            "type": "package",
+            "package": {
+                "name": "furf/jquery-ui-touch-punch",
+                "version": "0.2.3",
+                "type": "drupal-library",
+                "dist": {
+                    "type": "zip",
+                    "url": "https://github.com/furf/jquery-ui-touch-punch/archive/4bc009145202d9c7483ba85f3a236a8f3470354d.zip"
+                }
+            }
+        },
+        "select2": {
+            "type": "package",
+            "package": {
+                "name": "select2/select2",
+                "version": "4.1.0-rc.0",
+                "type": "drupal-library",
+                "dist": {
+                    "type": "zip",
+                    "url": "https://github.com/select2/select2/archive/refs/tags/4.1.0-rc.0.zip"
+                }
+            }
+        },
+        "drupal": {
+            "type": "composer",
+            "url": "https://packages.drupal.org/8"
+        }
+    },
+    "config": {
+        "bin-dir": "bin",
+        "sort-packages": true,
+        "allow-plugins": {
+            "composer/installers": true,
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "cweagans/composer-patches": true,
+            "drupal/core-composer-scaffold": true,
+            "oomphinc/composer-installers-extender": true,
+            "zaporylie/composer-drupal-optimizations": true
+        }
+    },
+    "require": {
+        "php": ">=7.3",
+        "ext-curl": "*",
+        "centarro/certified-projects": "^1.0",
+        "centarro/commerce_kickstart": "^3.0",
+        "composer/installers": "^1.9",
+        "cweagans/composer-patches": "^1.7",
+        "drupal/commerce_demo": "^3.0",
+        "drupal/core-composer-scaffold": "^9.1",
+        "drupal/core-dev": "^9.1",
+        "drupal/default_content": "2.0.0-alpha1",
+        "drush/drush": "^10.3",
+        "vlucas/phpdotenv": "^5.1",
+        "webflo/drupal-finder": "^1.2",
+        "webmozart/path-util": "^2.3"
+    },
+    "require-dev": {
+        "drupal/core-dev": "^9.1",
+        "zaporylie/composer-drupal-optimizations": "^1.2"
+    },
+    "conflict": {
+        "drupal/drupal": "*"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "autoload": {
+        "classmap": [
+            "scripts/composer/ScriptHandler.php"
+        ],
+        "files": ["load.environment.php"]
+    },
+    "scripts": {
+        "drupal-scaffold": "DrupalComposer\\DrupalScaffold\\Plugin::scaffold",
+        "pre-install-cmd": [
+            "DrupalProject\\composer\\ScriptHandler::checkComposerVersion"
+        ],
+        "pre-update-cmd": [
+            "DrupalProject\\composer\\ScriptHandler::checkComposerVersion"
+        ],
+        "post-install-cmd": [
+            "DrupalProject\\composer\\ScriptHandler::createRequiredFiles"
+        ],
+        "post-update-cmd": [
+            "DrupalProject\\composer\\ScriptHandler::createRequiredFiles"
+        ]
+    },
+    "extra": {
+        "composer-exit-on-patch-failure": true,
+        "patches": {
+            "drupal/default_content": {
+                "#3160146 Add a Normalizer and Denormalizer to support Layout Builder": "patches/default_content/3160146-layout-builder.patch"
+            }
+        },
+        "patchLevel": {
+            "drupal/core": "-p2",
+            "drupal/default_content": "-p1"
+        },
+        "drupal-scaffold": {
+            "locations": {
+                "web-root": "web/"
+            },
+            "overwrite": true,
+            "file-mapping": {
+                "[web-root]/libraries/jquery-ui-touch-punch/jquery.ui.touch-punch.min.js": "libraries/jquery-ui-touch-punch/jquery.ui.touch-punch.min.js",
+                "[web-root]/libraries/select2/dist/js/select2.min.js": "libraries/select2/dist/js/select2.min.js",
+                "[web-root]/libraries/select2/dist/css/select2.min.css": "libraries/select2/dist/css/select2.min.css"
+            }
+        },
+        "installer-paths": {
+            "web/core": ["type:drupal-core"],
+            "libraries/{$name}": [
+                "furf/jquery-ui-touch-punch",
+                "select2/select2"
+            ],
+            "web/libraries/{$name}": [
+                "type:drupal-library"
+            ],
+            "web/modules/contrib/{$name}": [
+                "type:drupal-module"
+            ],
+            "web/profiles/contrib/{$name}": [
+                "type:drupal-profile"
+            ],
+            "web/themes/contrib/{$name}": [
+                "type:drupal-theme"
+            ],
+            "drush/Commands/contrib/{$name}": [
+                "type:drupal-drush"
+            ]
+        }
+    }
+}

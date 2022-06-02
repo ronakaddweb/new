@@ -1,0 +1,25 @@
+Index: og.module
+===================================================================
+RCS file: /cvs/drupal-contrib/contributions/modules/og/og.module,v
+retrieving revision 1.110.2.85
+diff -u -b -r1.110.2.85 og.module
+--- og.module	26 May 2006 06:23:14 -0000	1.110.2.85
++++ og.module	29 May 2006 11:54:32 -0000
+@@ -46,7 +46,7 @@
+   if ($may_cache) {
+     // anon users should be able to get to the subscribe page
+     $items[] = array('path' => 'og/subscribe', 'type' => MENU_CALLBACK, 'callback' => 'og_subscribe', 'access' => TRUE, 'title' => t('subscribe to group'));
+-    $items[] = array('path' => 'og', 'callback' => 'og_list_groups_page', 'title' => t('groups'), 'weight' => 3, 'access' => user_access('access content'));
++    $items[] = array('path' => 'og', 'callback' => 'og_list_groups_page', 'title' => t('groups'), 'weight' => 3, 'access' => user_access('access groups list'));
+     
+     $access = $user->uid; // login is required
+     $items[] = array('path' => 'og/user', 'type' => MENU_CALLBACK, 'callback' => 'og_list_groups_page', 'callback arguments' => array($user->uid), 'access' => $access, 'title' => t('my groups'));
+@@ -143,7 +143,7 @@
+  * Implementation of hook_perm().
+  */
+ function og_perm() {
+-  return array('administer organic groups');
++  return array('administer organic groups', 'access groups list');
+ }
+ 
+ /**

@@ -1,0 +1,94 @@
+﻿MariaDB [task2]> select * from customer;
++-----+------------+---------+---------+------------+--------+
+| id  | name       | city    | country | phone_no   | mode   |
++-----+------------+---------+---------+------------+--------+
+|  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|  20 | somay      | jaipur  | india   | 9264587820 | online |
+|  30 | ram        | kota    | india   |  926458720 | ofline |
+|  40 | raju       | punr    | india   | 9269587820 | online |
+|  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|  90 | ravi       | pune    | india   | 9265587820 | online |
+| 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
++-----+------------+---------+---------+------------+--------+
+10 rows in set (0.001 sec)
+
+MariaDB [task2]>  select curtime();
++-----------+
+| curtime() |
++-----------+
+| 12:37:41  |
++-----------+
+1 row in set (0.000 sec)
+
+MariaDB [task2]> select date();
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ')' at line 1
+MariaDB [task2]> select date;
+ERROR 1054 (42S22): Unknown column 'date' in 'field list'
+MariaDB [task2]> select now();
++---------------------+
+| now()               |
++---------------------+
+| 2022-03-28 12:40:53 |
++---------------------+
+1 row in set (0.000 sec)
+
+MariaDB [task2]> select sign(10);
++----------+
+| sign(10) |
++----------+
+|        1 |
++----------+
+1 row in set (0.003 sec)
+
+MariaDB [task2]> select floor(10.20);
++--------------+
+| floor(10.20) |
++--------------+
+|           10 |
++--------------+
+1 row in set (0.000 sec)
+
+MariaDB [task2]> select ceil(10.20);
++-------------+
+| ceil(10.20) |
++-------------+
+|          11 |
++-------------+
+1 row in set (0.000 sec)
+
+MariaDB [task2]> select power(2,5);
++------------+
+| power(2,5) |
++------------+
+|         32 |
++------------+
+1 row in set (0.000 sec)
+
+MariaDB [task2]> select sqrt(9);
++---------+
+| sqrt(9) |
++---------+
+|       3 |
++---------+
+1 row in set (0.000 sec)
+
+MariaDB [task2]> select log(5);
++--------------------+
+| log(5)             |
++--------------------+
+| 1.6094379124341003 |
++--------------------+
+1 row in set (0.000 sec)
+
+MariaDB [task2]> select truncate(5);
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ')' at line 1
+MariaDB [task2]> select truncate(53.2, 5);
++-------------------+
+| truncate(53.2, 5) |
++-------------------+
+|          53.20000 |
++-------------------+
+1 row in set (0.000 sec)

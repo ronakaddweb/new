@@ -1,0 +1,1 @@
+Hello you are now on another page without page refresh

@@ -1,0 +1,15 @@
+; $Id: erp_ubercart.info,v 1.1.2.3 2010/02/08 07:01:25 simon Exp $
+name = erp ubercart
+description = This module provides synchronisation between erp and ubercart
+package = "ERP"
+core = 6.x
+dependencies[] = erp
+dependencies[] = erp_item
+dependencies[] = erp_stock
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

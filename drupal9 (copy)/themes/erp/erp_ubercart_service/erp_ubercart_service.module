@@ -1,0 +1,59 @@
+<?php
+// $Id: erp_ubercart_service.module,v 1.1.2.3 2009/12/26 00:22:23 simon Exp $
+
+/**
+ * @file
+ * Provide services interface for erp to talk to ubercart 
+ */
+
+/**
+ * Implementation of hook_help().
+ */
+function erp_ubercart_service_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#erp_ubercart_service':
+      return t('Provides a services interface for erp to talk to ubercart');
+      break;
+    case 'admin/modules#description':
+      return t('Provides a services interface for erp to talk to ubercart, requires ubercart & services');
+      break;
+  }
+}
+
+function erp_ubercart_service_perm() {
+  return array('erp ubercart sync');
+}
+
+function erp_ubercart_service_service() {
+  return array(
+    array(
+      '#method'            => 'erp_ubercart.product_list',
+      '#callback'          => 'erp_ubercart_service_product_list',
+      '#file'              => array('file' => 'inc', 'module' => 'erp_ubercart_service'),
+      '#return'            => 'struct',
+      '#help'              => t('Returns a list of nodes.')
+    ),
+    array(
+      '#method'            => 'erp_ubercart.product_by_code',
+      '#callback'          => 'erp_ubercart_service_product_by_code',
+      '#file'              => array('file' => 'inc', 'module' => 'erp_ubercart_service'),
+      '#args'              => array(
+        array(
+          '#name'          => 'code',
+          '#type'          => 'string',
+          '#description'   => t('The ubercart code/model')
+        )
+      ),
+      '#return'            => 'struct',
+      '#help'              => t('Retrieve a single ubercart node by code/model')
+    ),
+    array(
+      '#method'            => 'erp_ubercart.category_list',
+      '#callback'          => 'erp_ubercart_service_category_list',
+      '#file'              => array('file' => 'inc', 'module' => 'erp_ubercart_service'),
+      '#return'            => 'struct',
+      '#help'              => t('Returns a list of categories from ubercart')
+    )
+  );
+}
+

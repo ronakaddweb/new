@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        var n = parseInt(prompt("enter the number"))
+        var sum = 0, r;
+        temp = n;
+
+
+        while(n>0){
+            r = n%10;
+            sum = sum + (r*r*r);
+            n = parseInt(n/10);
+        }if(temp == sum){
+            document.write("armstrong number");
+        }
+        else{
+           document.write("not a armstrong number") 
+        }
+    </script>
+</body>
+</html>

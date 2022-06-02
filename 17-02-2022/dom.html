@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+	<h2>GeeksforGeeks</h2>
+
+	<!-- Finding the HTML Elements by their Id in DOM -->
+	<p id="intro">A Computer Science portal for geeks.</p>
+
+	
+<p>This example illustrates the <b>getElementsById</b> method.</p>
+ 
+	<p id="demo"></p>
+
+	<script>
+	const element = document.getElementById("intro");
+	document.getElementById("demo").innerHTML =
+	"GeeksforGeeks introduction is: " + element.innerHTML;
+	</script>
+
+<table>
+    <ROWS>
+        <tr>
+        <td>Car</td>
+        <td>Scooter</td>
+        </tr>
+        <tr>
+        <td>MotorBike</td>
+        <td>Bus</td>
+        </tr>
+    </ROWS>
+    </table>
+    
+
+    <!DOCTYPE html>
+<html>
+
+<head>
+	<title>DOM manipulation</title>
+</head>
+
+<body>
+	<label>Enter Value 1: </label>
+	<input type="text" id="val1" />
+	<br />
+	<br />
+	<label>Enter Value 2: </label>
+	<input type=".text" id="val2" />
+	<br />
+	<button onclick="getAdd()">Click To Add</button>
+	<p id="result"></p>
+
+	
+	<script type="text/javascript">
+	function getAdd() {
+		
+		// Fetch the value of input with id val1
+		const num1 = Number(document.getElementById("val1").value);
+		
+		// Fetch the value of input with id val2
+		const num2 = Number(document.getElementById("val2").value);
+		const add = num1 + num2;
+		console.log(add);
+		
+		// Displays the result in paragraph using dom
+		document.getElementById("result").innerHTML = "Addition : " + add;
+		
+		// Changes the color of paragraph tag with red
+		document.getElementById("result").style.color = "red";
+	}
+	</script>
+</body>
+
+</html>
+
+</body>
+
+</html>

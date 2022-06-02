@@ -1,0 +1,711 @@
+<?php
+// $Id: erp_email.module,v 1.20.2.18 2011/01/14 00:55:04 simon Exp $
+
+/**
+ * @file
+ *
+ * Email support function
+ */
+
+/**
+ * Implementation of hook_help().
+ */
+function erp_email_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP helper module to send email copies of invoices, purchase orders etc.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * Implementation of hook_perm().
+ *
+ */
+function erp_email_perm() {
+  return array('erp email send', 'admin erp_email');
+}
+
+/*
+function erp_email_erp_job_link($node) {
+	if (user_access('erp email send')) {
+	  $links['erp_email_erp_job_link'] = array(
+	    'title' => t('email'),
+	    'href' => 'email/'. $node->nid,
+	    'attributes' => array('title' => t('Email a copy of this job.'))
+	  );
+	  return $links;
+	}
+}
+*/
+
+function erp_email_erp_invoice_link($node) {
+	if (user_access('erp email send')) {
+	  $links['erp_email_erp_invoice_link'] = array(
+	    'title' => t('email'),
+	    'href' => 'email/'. $node->nid,
+	    'attributes' => array('title' => t('Email a copy of this invoice.'))
+	  );
+	  return $links;
+	}
+}
+
+function erp_email_erp_purchase_order_link($node) {
+	if (user_access('erp email send')) {
+	  $links['erp_email_erp_purchase_order_link'] = array(
+	    'title' => t('email'),
+	    'href' => 'email/'. $node->nid,
+	    'attributes' => array('title' => t('Email a copy of this purchase order.'))
+	  );
+	  return $links;
+	}
+}
+
+function erp_email_erp_quote_link($node) {
+	if (user_access('erp email send')) {
+	  $links['erp_email_erp_quote_link'] = array(
+	    'title' => t('email'),
+	    'href' => 'email/'. $node->nid,
+	    'attributes' => array('title' => t('Email a copy of this quote.'))
+	  );
+	  return $links;
+	}
+}
+
+function erp_email_erp_cash_sale_link($node) {
+	if (user_access('erp email send')) {
+	  $links['erp_email_erp_cash_sale_link'] = array(
+	    'title' => t('email'),
+	    'href' => 'email/'. $node->nid,
+	    'attributes' => array('title' => t('Email a copy of this cash sale.'))
+	  );
+	  return $links;
+	}
+}
+
+function erp_email_menu() {
+  $items['admin/erp/email'] = array(
+    'title' => 'Email',
+    'description' => 'Configure erp email settings',
+    'access arguments' => array('erp email admin'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_email_admin_settings'),
+  );
+
+  $items['email/%node'] = array(
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_email_confirm_form', 1),
+    'access arguments' => array('erp email send'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $name
+ * @param unknown_type $node
+ */
+function erp_email_set_format($nid, $format) {
+  db_query("DELETE FROM {erp_email} WHERE nid = '%d'", $nid);
+  db_query("INSERT INTO {erp_email} (nid, format) VALUES (%d, %d)", $nid, $format);
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $nid
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_email_get_format($nid = NULL) {
+  $format = db_result(db_query("SELECT format FROM {erp_email} WHERE nid = '%d'", $nid));
+  if (!$format) {
+    $format = variable_get('erp_default_email_format', 2);
+  }
+  return $format;
+}
+
+function erp_email_admin_settings() {
+  drupal_set_title(t('Email settings'));
+
+  // This should really look at the other modules installed to build a list
+  // of ways/formats the nodes can be emailed in.
+  $form['erp_default_email_format'] = array(
+    '#type' => 'select',
+    '#title' => t('Default email format'),
+    '#default_value' => variable_get('erp_default_email_format', 3),
+    '#options' => erp_email_format(),
+    '#multiple' => FALSE);
+
+  $form['erp_bcc_email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('BCC quote/invoice/etc emails to this address'),
+    '#default_value' => variable_get('erp_bcc_email', ''),
+  );
+
+  if (module_exists('erp_quote')) {
+    $form['erp_quote_email_sender'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Send quote emails from this address'),
+      '#default_value' => variable_get('erp_quote_email_sender', '')
+    );
+  }
+
+  if (module_exists('erp_invoice')) {
+    $form['erp_invoice_email_sender'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Send invoice emails from this address'),
+      '#default_value' => variable_get('erp_invoice_email_sender', '')
+    );
+  }
+
+  if (module_exists('erp_cash_sale')) {
+    $form['erp_cash_sale_email_sender'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Send cash sale emails from this address'),
+      '#default_value' => variable_get('erp_cash_sale_email_sender', '')
+    );
+  }
+
+  if (module_exists('erp_purchase_order')) {
+    $form['erp_purchase_order_email_sender'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Send purchase order emails from this address'),
+      '#default_value' => variable_get('erp_purchase_order_email_sender', '')
+    );
+  }
+
+  return system_settings_form($form);
+}
+
+function erp_email_format($type = NULL) {
+  $formats = array(
+    1 => 'Html email',
+    2 => 'PDF email'
+  );
+
+  if ($type) {
+    return $formats[$type];
+  }
+  else {
+    return $formats;
+  }
+}
+
+function erp_email_form_alter(&$form, &$form_state, $form_id) {
+  $forms = array('erp_customer_node_form',
+                 'erp_supplier_node_form');
+  switch ($form_id) {
+  	case 'erp_customer_node_form':
+  		$form['customer_communications']['email_format'] = erp_email_format_form($form['nid']['#value']);
+  		break;
+  	case 'erp_supplier_node_form':
+      $form['supplier_details']['email_format'] = erp_email_format_form($form['nid']['#value']);
+      break;
+  }
+}
+
+function erp_email_format_form($nid = NULL) {
+  return array(
+    '#type' => 'radios',
+    '#title' => t('Email format'),
+    '#default_value' => erp_email_get_format($nid),
+    '#options' => erp_email_format(),
+    '#multiple' => FALSE,
+  );
+}
+
+function erp_email_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
+  $erp_email_types = array('erp_customer', 'erp_supplier');
+
+  if (in_array($node->type, $erp_email_types)) {
+    switch ($op) {
+      case 'update':
+      case 'insert':
+        erp_email_set_format($node->nid, $node->email_format);
+        break;
+      case 'load':
+        $node->email_format = erp_email_get_format($node->nid);
+    }
+  }
+}
+
+function erp_email_erp_supplier_info($node) {
+  // They are identical outputs atm
+  $output = erp_email_erp_customer_info($node);
+  return $output;
+}
+
+function erp_email_erp_customer_info($node) {
+  $output = '';
+
+  // only people who can send need to see format
+  if (user_access('erp email send')) {
+	  if ($node->nid) {
+	    $format = erp_email_get_format($node->nid);
+	    if ($format) {
+	      $output = '<div class="email-format">';
+	      $output .= t('Email Format: ') . erp_email_format($format);
+	      $output .= '</div>';
+	    }
+	  }
+  }
+
+  return $output;
+}
+
+function erp_email_confirm_form($form_state, $node) {
+	$form = array();
+  $email = array();
+  $type = drupal_strtolower($type);
+
+  $email_addresses = erp_email_build_contact_list($node);
+
+  if (count($email_addresses) > 0 && ($email_addresses[0] != '')) {
+    $form['email']['email_to'] = array(
+      '#type' => 'select',
+      '#title' => 'To',
+      '#multiple' => TRUE,
+      '#size' => count($email_addresses) <= 10 ? count($email_addresses) : 10,
+      '#options' => $email_addresses,
+      '#default_value' => array(0 => 0)
+    );
+
+    $form['email']['email_extra'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Also send to (E.g. fred@bloggs.com, jane@bloggs.com)'),
+      '#length' => 50,
+      '#default_value' => ''
+    );
+  }
+  else {
+    $form['email']['email_extra'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Who to send the email to (E.g. fred@bloggs.com, jane@bloggs.com)'),
+      '#length' => 50,
+      '#default_value' => ''
+    );
+  }
+
+  switch ($node->type) {
+    case 'erp_invoice':
+      $email_text = variable_get('erp_invoice_email_text', '');
+      break;
+    default:
+      $email_text = '';
+      break;
+  }
+
+  $form['email']['email_text'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Extra text to put in email'),
+    '#default_value' => $email_text,
+  );
+
+  $form['email']['email_format'] = erp_email_format_form($node->customer_nid);
+
+  $form['email']['node'] = array(
+    '#type' => 'value',
+    '#value' => $node
+  );
+
+  $form['email']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Send email')
+  );
+
+  return $form;
+}
+
+/**
+*   Handle form submission.
+*/
+
+function erp_email_confirm_form_submit($form, &$form_state) {
+  $params = array();
+
+  // Set return state
+  $form_state['#redirect'] = 'node/'. arg(2);
+
+  if (!isset($form_state['values']['email_format'])) {
+    return;
+  }
+
+  $store = node_load($form_state['values']['node']->store_nid);
+
+  // Set some stuff based on type
+  switch ($form_state['values']['node']->type) {
+    case 'erp_invoice':
+      $params['subject'] = "Invoice - ". $form_state['values']['node']->invoice_id .' - '. $form_state['values']['node']->title;
+      $from_email = variable_get('erp_invoice_email_sender', FALSE);
+      break;
+
+    case 'erp_quote':
+      $params['subject'] = "Quote - ". $form_state['values']['node']->quote_id .' - '. $form_state['values']['node']->title;
+      $from_email = variable_get('erp_quote_email_sender', FALSE);
+      break;
+
+    case 'erp_cash_sale':
+      $params['subject'] = "Cash sale - ". $form_state['values']['node']->cash_sale_id .' - '. $form_state['values']['node']->title;
+      $from_email = variable_get('erp_case_sale_email_sender', FALSE);
+      break;
+
+    case 'erp_purchase_order':
+      $params['subject'] = "Purchase order - ". $form_state['values']['node']->purchase_order_id .' - '. $form_state['values']['node']->title;
+      $from_email = variable_get('erp_purchase_order_email_sender', FALSE);
+      break;
+  }
+  if (!$from_email) {
+    $from_email = $store->mail;
+  }
+
+  switch ($form_state['values']['email_format']) {
+    case 1: // HTML
+      require_once(drupal_get_path('module', 'print') .'/print.pages.inc');
+
+      $html = _erp_email_print_html_controller($form_state['values']['node'], $form_state['values']['email_text'], FALSE);
+
+      list($headers, $body) = erp_email_build_mime_body($from_email, $html, TRUE);
+      break;
+
+    case 2: // PDF
+      require_once(drupal_get_path('module', 'print_pdf') .'/print_pdf.pages.inc');
+
+      $output = _erp_email_print_pdf_controller($form_state['values']['node']);
+
+      list($headers, $body) = erp_email_build_mime_body($from_email, $form_state['values']['email_text'], FALSE, $output);
+      break;
+  }
+
+  $params['headers'] = $headers;
+  $params['body'] = $body;
+  $addresses = erp_email_collate($form_state['values']);
+  if (is_array($addresses)) {
+    $to_addresses = implode(', ', $addresses);
+  }
+  else {
+    drupal_set_message(t('Unable to determine address to send email to. Email not sent'));
+    return;
+  }
+
+  //drupal_mail('erp_email', 'erp_email', $to_addresses, language_default(), $params, $store->email, TRUE);
+  mail($to_addresses, $params['subject'], $body, $headers);
+
+  return;
+}
+
+function erp_email_mail($key, &$message, $params) {
+  switch ($key) {
+    case 'erp_email':
+      $message['subject'] = $params['subject'];
+      $message['body'] = $params['body'];
+      $message['headers'] = $params['headers'];
+      break;
+  }
+}
+
+/**
+ * Helper function that generates an array of email addresses to send the emails to
+ * - from the submitted form.
+ *
+ * @param node $recipient
+ */
+function erp_email_collate($form_values = NULL) {
+  $email_to = $form_values['email_to'];
+  $email_extra = $form_values['email_extra'];
+
+  $recipient_email_addresses = erp_email_build_contact_list($form_values['node']);
+
+  // build array of selected email addresses to send emails to
+  if ($email_to != '' && $email_to != NULL) {
+    foreach ($email_to as $selected) {
+      $email_addresses[] = $recipient_email_addresses[$selected];
+    }
+  }
+
+  // add extra emails (manually entered) to the array to send to
+  if ($email_extra != NULL && $email_extra !='') {
+    if ($email_addresses) {
+      $email_addresses = array_merge($email_addresses, explode(', ', $email_extra));
+    }
+    else {
+      $email_addresses = explode(', ', $email_extra);
+    }
+  }
+
+  // array of email addresses to send to
+  return $email_addresses;
+}
+
+function erp_email_build_contact_list($node) {
+  $addresses = array();
+
+  switch ($node->type) {
+    case "erp_purchase_order":
+      $recipient = node_load($node->supplier_id);
+      break;
+    default:
+      $recipient = node_load($node->customer_nid);
+      break;
+  }
+
+  // get the primary email address from the recipient node
+  if ($recipient->email != '' && $recipient->email != NULL) {
+    $addresses[] = $recipient->email;
+  }
+
+  // check contacts for email addresses
+  if (module_exists('erp_contact')) {
+    $contacts = erp_contacts_load($recipient->nid);
+
+    foreach ($contacts as $contact) {
+      if ($contact['email'] != '' && $contact['email'] != NULL) {
+        $addresses[] = $contact['email'];
+      }
+    }
+  }
+
+  return array_unique($addresses);
+}
+
+/**
+ * Take some text, and file attachments, and build a mime email body out of it.
+ *
+ */
+function erp_email_build_mime_body($from, $body, $html = FALSE) {
+  $headers = '';
+  $message = '';
+  $args = func_get_args();
+
+  // Ignore the first two
+  $args = array_slice($args, 3);
+
+  $timestamp = md5(uniqid(time()));
+
+  $headers = "MIME-Version: 1.0\n";
+  $headers .= "From: $from\nReply-to: $from\nReturn-path: $from\nErrors-to: $from\nX-Mailer: Drupal\n";
+  $headers .= "Content-Type: multipart/mixed;\n\tboundary=$timestamp\n";
+  $erp_bcc_email = variable_get('erp_bcc_email', FALSE);
+  if ($erp_bcc_email) {
+    $headers .= "Bcc: ". $erp_bcc_email ."\n";
+  }
+
+  $message = "\n--$timestamp\n";
+  if ($html) {
+    $message .= "Content-Type: text/html; charset=UTF-8;"."\n\n"; // sets the mime type
+  }
+  else {
+    $message .= "Content-Type: text/plain; charset=UTF-8;"."\n\n"; // sets the mime type
+  }
+  $message .= $body ."\n";
+  $message .= "\n\n";
+
+  foreach ($args as $filename) {
+    if (file_exists($filename) && (filesize($filename) > 0)) {
+      $filename = str_replace("\\", "\\\\", $filename);
+
+      $message .= "--$timestamp"."\n";
+      $message .= "Content-Type:". file_get_mimetype($filename) .";\n\tname=". $filename ."\n";
+      $message .= "Content-Transfer-Encoding: base64\n";
+      $message .= "Content-Disposition: attachment;\n\tfilename=". $filename ."\n\n";
+
+      $filedata = fread(fopen($filename, "rb"), filesize($filename));
+
+      $message .= chunk_split(base64_encode($filedata));
+      $message .= "\n\n";
+    }
+  }
+
+  $message .= "--$timestamp--";
+
+  $results = array($headers, $message);
+
+  return $results;
+}
+
+
+/**
+ * The code below is almost directly copied from print_pdf.pages.inc, but we dont always directly output
+ * to the user, which allows us to then email as an attachment. Someday I migth submit patches to print
+ * module to make it more usable like an API, until then....
+ */
+function _erp_email_print_html_controller($node, $extra_text, $file_output) {
+	if (!$node->path) {
+    $path = 'node/'. $node->nid;
+	}
+	else {
+		$path = $node->path;
+	}
+  $cid = isset($_GET['comment']) ? (int)$_GET['comment'] : NULL;
+
+  $print = print_controller($path, $cid, PRINT_HTML_FORMAT);
+  if ($print !== FALSE) {
+    ob_start();
+    include_once(_print_get_template(PRINT_HTML_FORMAT, $print['type']));
+    $html = ob_get_contents();
+    ob_end_clean();
+    $html = drupal_final_markup($html);
+
+    $nodepath = (isset($node->path)) ? drupal_get_normal_path($node->path) : 'node/'. $path;
+    db_query("UPDATE {print_page_counter} SET totalcount = totalcount + 1, timestamp = %d WHERE path = '%s'", time(), $nodepath);
+    // If we affected 0 rows, this is the first time viewing the node.
+    if (!db_affected_rows()) {
+      // We must create a new row to store counters for the new node.
+      db_query("INSERT INTO {print_page_counter} (path, totalcount, timestamp) VALUES ('%s', 1, %d)", $nodepath, time());
+    }
+
+    if ($file_output) {
+      $html_filename = str_replace('/', '_', $path) .'.html';
+
+      $output_dir = file_directory_path() .'/'. $node->type;
+      file_check_directory($output_dir, FILE_CREATE_DIRECTORY);
+      $output_file = $output_dir .'/'. $html_filename;
+      file_put_contents($output_file, $html);
+      return $output_file;
+    }
+    else {
+      return $html;
+    }
+  }
+}
+
+function _erp_email_print_pdf_controller($node) {
+  global $base_url, $language;
+
+  // Disable caching for generated PDFs, as Drupal doesn't ouput the proper headers from the cache
+  $GLOBALS['conf']['cache'] = FALSE;
+
+  if (!$node->path) {
+    $path = 'node/'. $node->nid;
+  }
+  else {
+    $path = $node->path;
+  }
+  $cid = isset($_GET['comment']) ? (int)$_GET['comment'] : NULL;
+
+  $print_pdf_pdf_tool = variable_get('print_pdf_pdf_tool', PRINT_PDF_PDF_TOOL_DEFAULT);
+
+  $print = print_controller($path, $cid, PRINT_PDF_FORMAT);
+  if ($print === FALSE) {
+    return;
+  }
+
+  // Img elements must be set to absolute
+  $pattern = '!<(img\s[^>]*?)>!is';
+  $print['content'] = preg_replace_callback($pattern, '_print_rewrite_urls', $print['content']);
+  $print['logo'] = preg_replace_callback($pattern, '_print_rewrite_urls', $print['logo']);
+  $print['footer_message'] = preg_replace_callback($pattern, '_print_rewrite_urls', $print['footer_message']);
+  // And converted from private to public paths
+  $file_downloads = variable_get('file_downloads', FILE_DOWNLOADS_PUBLIC);
+  if ($file_downloads == FILE_DOWNLOADS_PRIVATE) {
+    switch (variable_get('language_negotiation', LANGUAGE_NEGOTIATION_NONE)) {
+      case LANGUAGE_NEGOTIATION_PATH_DEFAULT:
+      case LANGUAGE_NEGOTIATION_PATH:
+        $lang = $language->language;
+        break;
+      default:
+        $lang = '';
+        break;
+    }
+    $pattern = "!(<img\s[^>]*?src\s*?=\s*?['\"]?)${base_url}/(?:(?:index.php)?\?q=)?(?:${lang}/)?system/files(/[^>]*?>)!is";
+    $replacement = '$1file://'. realpath(file_directory_path()) .'$2';
+    $print['content'] = preg_replace($pattern, $replacement, $print['content']);
+    $print['logo'] = preg_replace($pattern, $replacement, $print['logo']);
+    $print['footer_message'] = preg_replace($pattern, $replacement, $print['footer_message']);
+  }
+
+  $node = $print['node'];
+  $temp = ob_get_status();
+  ob_start();
+  include_once(_print_get_template(PRINT_PDF_FORMAT, $print['type']));
+  $html = ob_get_contents();
+  ob_end_clean();
+  $html = drupal_final_markup($html);
+
+  // Convert the a href elements, to make sure no relative links remain
+  $pattern = '!<(a\s[^>]*?)>!is';
+  $html = preg_replace_callback($pattern, '_print_rewrite_urls', $html);
+  // And make anchor links relative again, to permit in-PDF navigation
+  $html = preg_replace("!${base_url}/". PRINTPDF_PATH ."/.*?%2523!", '#', $html);
+
+  $pdf_filename = variable_get('print_pdf_filename', PRINT_PDF_FILENAME_DEFAULT);
+  if (function_exists('token_replace') && !empty($pdf_filename)) {
+    $pdf_filename = token_replace($pdf_filename, 'node', $node) .'.pdf';
+  }
+  else {
+    $pdf_filename = str_replace('/', '_', $path) .'.pdf';
+  }
+
+  if (basename($print_pdf_pdf_tool, '.exe') == 'wkhtmltopdf') {
+    return _erp_email_print_pdf_wkhtmltopdf($print, $html, $pdf_filename, $node);
+  }
+  else {
+    return drupal_not_found();
+  }
+
+  $nodepath = (isset($node->path)) ? drupal_get_normal_path($node->path) : 'node/'. $path;
+  db_query("UPDATE {print_pdf_page_counter} SET totalcount = totalcount + 1, timestamp = %d WHERE path = '%s'", time(), $nodepath);
+  // If we affected 0 rows, this is the first time viewing the node.
+  if (!db_affected_rows()) {
+    // We must create a new row to store counters for the new node.
+    db_query("INSERT INTO {print_pdf_page_counter} (path, totalcount, timestamp) VALUES ('%s', 1, %d)", $nodepath, time());
+  }
+}
+
+function _erp_email_print_pdf_wkhtmltopdf($print, $html, $filename, $node) {
+  $print_pdf_pdf_tool = variable_get('print_pdf_pdf_tool', PRINT_PDF_PDF_TOOL_DEFAULT);
+  $print_pdf_paper_size = drupal_strtolower(variable_get('print_pdf_paper_size', PRINT_PDF_PAPER_SIZE_DEFAULT));
+  $print_pdf_page_orientation = variable_get('print_pdf_page_orientation', PRINT_PDF_PAGE_ORIENTATION_DEFAULT);
+  $print_pdf_content_disposition = variable_get('print_pdf_content_disposition', PRINT_PDF_CONTENT_DISPOSITION_DEFAULT);
+  $print_pdf_wkhtmltopdf_options = variable_get('print_pdf_wkhtmltopdf_options', PRINT_PDF_WKHTMLTOPDF_OPTIONS);
+  $print_pdf_xvfb_options = variable_get('print_pdf_xvfb_options', PRINT_PDF_XVFB_OPTIONS);
+
+  $xvfb_binary = key(file_scan_directory(drupal_get_path('module', 'print'), '^Xvfb$'));
+  $dpi = 96;
+
+  if (function_exists('token_replace') && !empty($print_pdf_wkhtmltopdf_options)) {
+    $print_pdf_wkhtmltopdf_options = token_replace($print_pdf_wkhtmltopdf_options, 'node', $print['node']);
+  }
+
+  $descriptor = array(0 => array('pipe', 'r'), 1 => array('pipe', 'w'), 2 => array('pipe', 'w'));
+  $pdf_output = (stristr(PHP_OS, 'Win')) ? tempnam(file_directory_temp(), 'pdf') : '-';
+  $cmd = realpath($print_pdf_pdf_tool) ." --page-size $print_pdf_paper_size --orientation $print_pdf_page_orientation --dpi $dpi $print_pdf_wkhtmltopdf_options - $pdf_output";
+
+  $process = proc_open($cmd, $descriptor, $pipes, NULL, isset($xvfb_binary) ? array('DISPLAY' => ':'. $xdisplay) : NULL);
+
+  if (is_resource($process)) {
+    fwrite($pipes[0], $html);
+    fclose($pipes[0]);
+
+    if (stristr(PHP_OS, 'Win')) {
+      // It seems Windows can't use the pipe properly so get the contents from a file and then delete it.
+      $pdf = file_get_contents($pdf_output);
+      unlink($pdf_output);
+    }
+    else {
+      $pdf = stream_get_contents($pipes[1]);
+    }
+    fclose($pipes[1]);
+
+    stream_set_blocking($pipes[2], 0);
+    $error = stream_get_contents($pipes[2]);
+    if (!empty($error)) {
+      watchdog('print_pdf', 'wkhtmltopdf: '. $error);
+    }
+    fclose($pipes[2]);
+
+    $retval = proc_terminate($process);
+  }
+
+  $output_dir = file_directory_path() .'/'. $node->type;
+  file_check_directory($output_dir, FILE_CREATE_DIRECTORY);
+  $output_file = $output_dir .'/'. $filename;
+  file_put_contents($output_file, $pdf);
+
+  return $output_file;
+}

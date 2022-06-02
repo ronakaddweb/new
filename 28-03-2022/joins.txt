@@ -1,0 +1,165 @@
+﻿MariaDB [task2]> select agent.id, agent.name, customer.id, customer.name from agent join customer on agent.id = customer.id;
++------+---------+-----+------------+
+| id   | name    | id  | name       |
++------+---------+-----+------------+
+|   10 | ronak   |  10 | ronak      |
+|   20 | shubham |  20 | somay      |
+|   30 | shivam  |  30 | ram        |
+|   40 | jatin   |  40 | raju       |
+|   50 | somay   |  50 | shanu      |
+|   60 | RJ      |  60 | jain       |
+|   70 | raj     |  70 | ronak Jain |
+|   80 | Raja    |  80 | shubham    |
+|   90 | mradul  |  90 | ravi       |
+|  100 | ronak   | 100 | RJ         |
++------+---------+-----+------------+
+10 rows in set (0.001 sec)
+
+MariaDB [task2]> select agent.id, agent.name, customer.id, customer.name from agent inner join customer on agent.id = customer.id;
++------+---------+-----+------------+
+| id   | name    | id  | name       |
++------+---------+-----+------------+
+|   10 | ronak   |  10 | ronak      |
+|   20 | shubham |  20 | somay      |
+|   30 | shivam  |  30 | ram        |
+|   40 | jatin   |  40 | raju       |
+|   50 | somay   |  50 | shanu      |
+|   60 | RJ      |  60 | jain       |
+|   70 | raj     |  70 | ronak Jain |
+|   80 | Raja    |  80 | shubham    |
+|   90 | mradul  |  90 | ravi       |
+|  100 | ronak   | 100 | RJ         |
++------+---------+-----+------------+
+10 rows in set (0.001 sec)
+
+MariaDB [task2]> select agent.id, agent.name, customer.id, customer.name from agent inner outer customer on agent.id = customer.id;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'outer customer on agent.id = customer.id' at line 1
+MariaDB [task2]> select agent.id, agent.name, customer.id, customer.name from agent cross join customer on agent.id = customer.id;
++------+---------+-----+------------+
+| id   | name    | id  | name       |
++------+---------+-----+------------+
+|   10 | ronak   |  10 | ronak      |
+|   20 | shubham |  20 | somay      |
+|   30 | shivam  |  30 | ram        |
+|   40 | jatin   |  40 | raju       |
+|   50 | somay   |  50 | shanu      |
+|   60 | RJ      |  60 | jain       |
+|   70 | raj     |  70 | ronak Jain |
+|   80 | Raja    |  80 | shubham    |
+|   90 | mradul  |  90 | ravi       |
+|  100 | ronak   | 100 | RJ         |
++------+---------+-----+------------+
+10 rows in set (0.001 sec)
+
+MariaDB [task2]> select * from agent cross join 'customer';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ''customer'' at line 1
+MariaDB [task2]> select * from 'agent' cross join 'customer';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near ''agent' cross join 'customer'' at line 1
+MariaDB [task2]> select * from `agent` cross join `customer`;
++------+---------+------+---------+-------------+-------+-----+------------+---------+---------+------------+--------+
+| id   | name    | code | country | phonenumber | lname | id  | name       | city    | country | phone_no   | mode   |
++------+---------+------+---------+-------------+-------+-----+------------+---------+---------+------------+--------+
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   20 | shubham |  255 | india   |       60000 | jian  |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   50 | somay   |  255 | china   |       50000 | garg  |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   70 | raj     |  255 | america |       55000 | jain  |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   20 | shubham |  255 | india   |       60000 | jian  |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   50 | somay   |  255 | china   |       50000 | garg  |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   70 | raj     |  255 | america |       55000 | jain  |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  20 | somay      | jaipur  | india   | 9264587820 | online |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   20 | shubham |  255 | india   |       60000 | jian  |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   50 | somay   |  255 | china   |       50000 | garg  |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   70 | raj     |  255 | america |       55000 | jain  |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  30 | ram        | kota    | india   |  926458720 | ofline |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  30 | ram        | kota    | india   |  926458720 | ofline |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  40 | raju       | punr    | india   | 9269587820 | online |
+|   20 | shubham |  255 | india   |       60000 | jian  |  40 | raju       | punr    | india   | 9269587820 | online |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  40 | raju       | punr    | india   | 9269587820 | online |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  40 | raju       | punr    | india   | 9269587820 | online |
+|   50 | somay   |  255 | china   |       50000 | garg  |  40 | raju       | punr    | india   | 9269587820 | online |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  40 | raju       | punr    | india   | 9269587820 | online |
+|   70 | raj     |  255 | america |       55000 | jain  |  40 | raju       | punr    | india   | 9269587820 | online |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  40 | raju       | punr    | india   | 9269587820 | online |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  40 | raju       | punr    | india   | 9269587820 | online |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  40 | raju       | punr    | india   | 9269587820 | online |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   20 | shubham |  255 | india   |       60000 | jian  |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   50 | somay   |  255 | china   |       50000 | garg  |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   70 | raj     |  255 | america |       55000 | jain  |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   20 | shubham |  255 | india   |       60000 | jian  |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   50 | somay   |  255 | china   |       50000 | garg  |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   70 | raj     |  255 | america |       55000 | jain  |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   20 | shubham |  255 | india   |       60000 | jian  |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   50 | somay   |  255 | china   |       50000 | garg  |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   70 | raj     |  255 | america |       55000 | jain  |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   20 | shubham |  255 | india   |       60000 | jian  |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   50 | somay   |  255 | china   |       50000 | garg  |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   70 | raj     |  255 | america |       55000 | jain  |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|   10 | ronak   |  255 | kota    |       50000 | 25    |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   20 | shubham |  255 | india   |       60000 | jian  |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   30 | shivam  |  255 | india   |       20000 | kumar |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   50 | somay   |  255 | china   |       50000 | garg  |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   60 | RJ      |  255 | india   |       35000 | jain  |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   70 | raj     |  255 | america |       55000 | jain  |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   80 | Raja    |  255 | india   |       35000 | garg  |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |  90 | ravi       | pune    | india   | 9265587820 | online |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |  90 | ravi       | pune    | india   | 9265587820 | online |
+|   10 | ronak   |  255 | kota    |       50000 | 25    | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   20 | shubham |  255 | india   |       60000 | jian  | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   30 | shivam  |  255 | india   |       20000 | kumar | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   40 | jatin   |  255 | japan   |       30000 | kumar | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   50 | somay   |  255 | china   |       50000 | garg  | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   60 | RJ      |  255 | india   |       35000 | jain  | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   70 | raj     |  255 | america |       55000 | jain  | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   80 | Raja    |  255 | india   |       35000 | garg  | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|   90 | mradul  |  255 | uk      |       50000 | garg  | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
+|  100 | ronak   |  255 | usa     |       50000 | kumar | 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
++------+---------+------+---------+-------------+-------+-----+------------+---------+---------+------------+--------+
+100 rows in set (0.001 sec)
+
+MariaDB [task2]> 0.0

@@ -1,0 +1,370 @@
+<?php
+// $Id: erp_recurring.module,v 1.4.4.16 2010/06/10 03:24:54 simon Exp $
+
+/**
+ * @file
+ * recurring transaction module
+ */
+
+/**
+ * Help function for recurring module
+ *
+ */
+function erp_recurring_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    // This description is showm in the listing at admin/modules.
+    return t('ERP recurring module.');
+    break;
+  }
+}
+
+function erp_recurring_perm() {
+  return array('erp recurring edit', 'erp recurring view');
+}
+
+function erp_recurring_menu() {
+  $items['erp_recurring/add/%'] = array(
+    'access arguments' => array('erp recurring edit'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_recurring_add_form', 2),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp_recurring/edit/%'] = array(
+    'access arguments' => array('erp recurring edit'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_recurring_edit_form', 2),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp_recurring/remove/%'] = array(
+    'access arguments' => array('erp recurring edit'),
+    'page callback' => 'erp_recurring_remove',
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/reports/recurring'] = array(
+    'access arguments' => array('erp recurring view'),
+    'title' => 'Recurring transactions',
+    'page callback' => 'erp_recurring_report'
+  );
+
+  return $items;
+}
+
+function erp_recurring_edit_form(&$form_state, $nid) {
+  $result = db_query("SELECT * from {erp_recurring} WHERE recurring_id = %d", $nid);
+
+  $recurring = db_fetch_array($result);
+
+  if ($recurring) {
+    $form = erp_recurring_edit_common_form($recurring);
+
+    $form['erp_recurring_details']['recurring_id'] =
+      array('#type' => 'hidden',
+            '#default_value' => $recurring['recurring_id']);
+
+    $form['erp_recurring_details']['nid'] =
+      array('#type' => 'hidden',
+            '#default_value' => $recurring['nid']);
+
+    $form['erp_recurring_details']['submit'] =
+      array('#type' => 'submit',
+            '#value' => t('Save'));
+
+    return $form;
+  }
+  else {
+    // Set error message
+    drupal_set_message(t('Recurring not found'));
+  }
+}
+
+function erp_recurring_add_form($form_state, $nid) {
+  $form = erp_recurring_edit_common_form();
+
+  $form['erp_recurring_details']['nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => arg(2));
+
+  return $form;
+}
+
+function erp_recurring_add_form_submit($form, $form_state) {
+  $edit = $form_state['values']['erp_recurring_details'];
+  $edit['next_schedule'] = date_convert($edit['next_schedule'], DATE_DATETIME, DATE_UNIX);
+  $edit['last_run'] = date_convert($edit['last_run'], DATE_DATETIME, DATE_UNIX);
+  drupal_write_record('erp_recurring', $edit);
+
+  drupal_set_message(t('Recurring added'));
+}
+
+function erp_recurring_edit_form_submit($form, $form_state) {
+  $edit = $form_state['values']['erp_recurring_details'];
+  $edit['next_schedule'] = date_convert($edit['next_schedule'], DATE_DATETIME, DATE_UNIX);
+  $edit['last_run'] = date_convert($edit['last_run'], DATE_DATETIME, DATE_UNIX);
+  drupal_write_record('erp_recurring', $edit, array('recurring_id'));
+
+  drupal_set_message(t('Recurring saved'));
+}
+
+function erp_recurring_frequency($fid = NULL) {
+  $frequencies = array('1' => 'Daily',
+                       '2' => 'Weekly',
+                       '3' => 'Monthly',
+                       '4' => 'Yearly',
+                       '5' => 'Fortnightly',
+                       '6' => 'Quarterly',
+                       '7' => 'Biennually');
+
+  if ($fid) {
+    return $frequencies[$fid];
+  }
+  else {
+    return $frequencies;
+  }
+}
+
+function erp_recurring_remove($recurring_id) {
+  if ($recurring_id) {
+    db_query("DELETE FROM {erp_recurring} WHERE recurring_id = %d", $recurring_id);
+
+    // Return to source page
+    drupal_set_message(t('Recurring Removed'));
+  }
+  drupal_goto();
+}
+
+function erp_recurring_edit_common_form($recurring = array()) {
+  $form = array();
+
+  $form['erp_recurring_details'] =
+    array('#prefix' => '<div class="recurring-details">',
+          '#type' => 'fieldset',
+          '#title' => 'recurring details',
+          '#collapsible' => TRUE,
+          '#tree' => TRUE,
+          '#suffix' => '</div>');
+
+  $form['erp_recurring_details']['frequency'] =
+    array('#type' => 'select',
+          '#title' => t('Frequency'),
+          '#options' => erp_recurring_frequency(),
+          '#default_value' => ($recurring['frequency'] ? $recurring['frequency'] : 3));
+
+  $form['erp_recurring_details']['next_schedule'] =
+    array('#type' => 'date_popup',
+          '#size' => 12,
+          '#title' => t('Next occurrence'),
+          '#default_value' => date_convert($recurring['next_schedule'], DATE_UNIX, DATE_DATETIME),
+          '#date_format' => 'Y-m-d');
+
+  if (!$recurring['recurring_id']) {
+    $form['erp_recurring_details']['submit'] =
+      array('#type' => 'submit',
+            '#value' => t('Add'));
+  }
+
+  return $form;
+}
+
+function erp_recurring_erp_invoice_link($node) {
+  if (user_access('erp recurring edit')) {
+    $rows = erp_recurring_list($node->nid);
+
+    if (!count($rows)) {
+      $links['erp_recurring_erp_invoice_link'] = array(
+        'title' => t('make recurring'),
+        'href' => 'erp_recurring/add/'. $node->nid,
+        'query' => array('destination' => $_GET['q']),
+      );
+    }
+  }
+
+  return $links;
+}
+
+function erp_recurring_erp_job_link($node) {
+  if (user_access('erp recurring edit')) {
+    $rows = erp_recurring_list($node->nid);
+
+    if (!count($rows)) {
+      $links['erp_recurring_erp_job_link'] = array(
+        'title' => t('make recurring'),
+        'href' => 'erp_recurring/add/'. $node->nid,
+        'query' => array('destination' => $_GET['q']),
+      );
+    }
+  }
+
+  return $links;
+}
+
+function erp_recurring_erp_price_list_update_link($node) {
+  if (user_access('erp recurring edit')) {
+    $rows = erp_recurring_list($node->nid);
+
+    if (!count($rows)) {
+      $links['erp_recurring_erp_price_list_update_link'] = array(
+        'title' => t('make recurring'),
+        'href' => 'erp_recurring/add/'. $node->nid,
+        'query' => array('destination' => $_GET['q']),
+      );
+    }
+  }
+
+  return $links;
+}
+
+
+function erp_recurring_erp_invoice_info($node) {
+  $header = array('Frequency', 'Next schedule', NULL);
+  $rows = erp_recurring_list($node->nid);
+
+  if (count($rows)) {
+    $table = theme('table', $header, $rows);
+    $output = '<div class="erp-recurrings">';
+    $output .= '<strong>Recurring invoice settings</strong><br />';
+    $output .= $table;
+    $output .= '</div><br />';
+  }
+
+  return $output;
+}
+
+function erp_recurring_erp_job_info($node) {
+  $header = array('Frequency', 'Next schedule', NULL);
+  $rows = erp_recurring_list($node->nid);
+
+  if (count($rows)) {
+    $table = theme('table', $header, $rows);
+    $output = '<div class="erp-recurrings">';
+    $output .= '<strong>Recurring job settings</strong><br />';
+    $output .= $table;
+    $output .= '</div><br />';
+  }
+
+  return $output;
+}
+
+function erp_recurring_erp_price_list_update_info($node) {
+  $header = array('Frequency', 'Next schedule', NULL);
+  $rows = erp_recurring_list($node->nid);
+
+  if (count($rows)) {
+    $table = theme('table', $header, $rows);
+    $output = '<div class="erp-recurrings">';
+    $output .= '<strong>Recurring price list update settings</strong><br />';
+    $output .= $table;
+    $output .= '</div><br />';
+  }
+
+  return $output;
+}
+
+function erp_recurring_list($nid) {
+  $rows = array();
+
+  $result = db_query("SELECT * FROM {erp_recurring} WHERE nid = %d", $nid);
+  while ($row = db_fetch_array($result)) {
+    $rows[] = array(erp_recurring_frequency($row['frequency']),
+                    date_convert($row['next_schedule'], DATE_UNIX, DATE_DATETIME),
+                    l(t('edit'), 'erp_recurring/edit/'. $row['recurring_id'], array('query' => 'destination=node/'. $nid)) .'&nbsp;'.
+                    l(t('remove'), 'erp_recurring/remove/'. $row['recurring_id'], array('query' => 'destination=node/'. $nid)));
+  }
+
+  return $rows;
+}
+
+function erp_recurring_load($nid) {
+  return db_fetch_object(db_query("SELECT * FROM {erp_recurring} WHERE nid = %d", $nid));
+}
+
+function erp_recurring_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
+  $erp_recurring_types = array('erp_invoice', 'erp_price_list_update', 'erp_job');
+
+  if (in_array($node->type, $erp_recurring_types)) {
+    switch ($op) {
+      case 'delete':
+        db_query("DELETE FROM {erp_recurring} WHERE nid = %d", $node->nid);
+        break;
+    }
+  }
+}
+
+function erp_recurring_cron() {
+  $date = date_convert(date_now(), DATE_OBJECT, DATE_UNIX);
+
+  $result = db_query("SELECT * FROM {erp_recurring} WHERE next_schedule < %d AND last_run < %d", $date, $date);
+
+  while ($row = db_fetch_array($result)) {
+    // Create new date object to set to the future schedule
+    $date_object = date_now();
+    $node = node_load($row['nid']);
+
+    // Take actions
+    module_invoke($node->type, 'recurring', $node);
+
+    // Now re-schedule for the next run
+    switch ($row['frequency']) {
+    case 1: // Daily
+      $date_object->modify('+1 day');
+      break;
+
+    case 2: // Weekly
+      $date_object->modify('+1 week');
+      break;
+
+    case 3: // Monthly
+      $date_object->modify('+1 month');
+      break;
+
+    case 4: // Yearly
+      $date_object->modify('+1 year');
+      break;
+
+    case 5: // Fortnightly
+      $date_object->modify('+2 weeks');
+      break;
+
+    case 6: // Quarterly
+      $date_object->modify('+3 months');
+      break;
+
+    case 7: // Biannually
+      $date_object->modify('+2 years');
+      break;
+    }
+
+    $next_schedule = date_convert($date_object, DATE_OBJECT, DATE_UNIX);
+
+    db_query("UPDATE {erp_recurring} SET last_run = '%s', next_schedule = '%s' WHERE nid = '%s'", $date, $next_schedule, $row['nid']);
+  }
+}
+
+function erp_recurring_report() {
+  $result = db_query("SELECT * FROM {erp_recurring} ORDER BY next_schedule ASC");
+
+  $header = array(t('Invoice'), t('Customer'), t('Frequency'), t('Next Scheduled'), t('Type'), t('Amount'));
+  $rows = array();
+  while ($row = db_fetch_array($result)) {
+    $node = node_load($row['nid']);
+    $customer = node_load($node->customer_nid);
+
+    $type = ucfirst(str_replace('_', ' ', str_replace('erp_', '', $node->type)));
+
+    $rows[] = array(
+      l($node->title, 'node/' . $row['nid']),
+      l($customer->title, 'node/' . $customer->nid),
+      erp_recurring_frequency($row['frequency']),
+      date_format(date_convert($row['next_schedule'], DATE_UNIX, DATE_OBJECT), 'Y-m-d'),
+      $type,
+      erp_symbol() . erp_currency($node->total),
+    );
+  }
+
+  return theme('table', $header, $rows);
+}
+

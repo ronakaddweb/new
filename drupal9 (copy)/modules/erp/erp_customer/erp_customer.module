@@ -1,0 +1,1232 @@
+<?php
+// $Id: erp_customer.module,v 1.23.2.26 2010/04/06 10:23:01 simon Exp $
+
+/**
+ * @file
+ *
+ * Customer module
+ *
+ */
+
+/**
+ * Implementation of hook_help().
+ *
+ * Throughout Drupal, hook_help() is used to display help text at the top of
+ * pages. Some other parts of Drupal pages get explanatory text from these hooks
+ * as well. We use it here to provide a description of the module on the
+ * module administration page.
+ */
+function erp_customer_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP customer module.');
+      break;
+    case 'node/add#erp_customer':
+      // This description shows up when users click "create content."
+      return t('ERP customer.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * Implementation of hook_name().
+ *
+ * This is a required node hook. Since our module only defines one node
+ */
+function erp_customer_node_name($node) {
+  return t('erp customer');
+}
+
+/**
+ * Customer node info
+ *
+ * @return unknown
+ */
+function erp_customer_node_info() {
+  return array(
+    'erp_customer' => array(
+      'name' => t('erp customer'),
+      'module' => 'erp_customer',
+      'description' => t('ERP Customer module'),
+      'title_label' => t('Customer name'),
+      'has_body' => TRUE,
+    )
+  );
+}
+
+/**
+ * Implementation of hook_access().
+ *
+ * Node modules may implement hook_access() to determine the operations
+ * users may perform on nodes. This example uses a very common access pattern.
+ */
+function erp_customer_access($op, $node, $account) {
+  switch ($op) {
+  	case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('create customer', $account);
+      break;
+
+  	case 'update':
+  	case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit all customers', $account)) {
+        return TRUE;
+      }
+
+      if (user_access('edit own customer', $account) && ($account->uid == $node->uid)) {
+        return TRUE;
+      }
+      break;
+
+	  case 'view':
+      if (user_access('view customer', $account)) {
+  	    return TRUE;
+      }
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_menu().
+ *
+ * In order for users to be able to add nodes of their own, we need to
+ * give them a link to the node composition form here.
+ */
+function erp_customer_menu() {
+  $items['admin/erp/customer'] = array(
+    'title' => 'Customer',
+    'description' => 'Configure erp customer settings',
+    'access arguments' => array('admin customers'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_customer_admin_settings')
+  );
+
+  $items['erp/customer/autocomplete'] = array(
+    'page callback' => 'erp_customer_autocomplete',
+    'access arguments' => array('autocomplete customers'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['erp/customer/load'] = array(
+    'access arguments' => array('customer quick find block'),
+    'page callback' => 'erp_customer_search_load',
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/customer/loadadd/%'] = array(
+    'access arguments' => array('edit customer'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_customer_add_form', 3),
+    'type' => MENU_CALLBACK
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_block().
+ *
+ * @param $op
+ * @param $delta
+ * @return unknown_type
+ */
+function erp_customer_block($op = 'list', $delta = 0) {
+  if ($op == 'list') {
+    $blocks[0]['info'] = t('ERP Customer Quick Find');
+    return $blocks;
+  }
+  elseif ($op == 'view' && user_access('customer quick find block')) {
+    $block['content'] = drupal_get_form('erp_customer_search_form', '');
+    $block['subject'] = t('Customer Search');
+    return $block;
+  }
+}
+
+/**
+ * Implemenation of hook_form().
+ *
+ * @param $form_state
+ * @return unknown_type
+ */
+function erp_customer_search_form(&$form_state) {
+  $form = array();
+
+  $form['#attributes'] = array('class' => 'customer-load');
+
+  $form['customer']['customer_name'] =
+    array('#type' => 'textfield',
+          '#size' => 15,
+          '#maxlength' => 128,
+          '#default_value' => '',
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['customer']['submit'] =
+    array('#type' => 'submit',
+          '#value' => t('Load'));
+
+  return $form;
+}
+
+/**
+ * Implementation of hook_submit().
+ *
+ * @param $form
+ * @param $form_state
+ * @return unknown_type
+ */
+function erp_customer_search_form_submit($form, $form_state) {
+  $name = check_plain($form_state['values']['customer_name']);
+
+  // See if we can load the customer directly
+  $customer = _erp_customer_find($name);
+  if ($customer) {
+    drupal_goto('node/'. $customer->nid);
+  }
+
+  // Otherwise, got to add form
+  drupal_goto('erp/customer/loadadd/'. $name);
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * @param $form_state
+ * @param $name
+ * @return unknown_type
+ */
+function erp_customer_add_form(&$form_state, $name = NULL) {
+  $output = '';
+
+  // Users tend to forget to capitalise with the autocomplete, but when this form is submitted, it uses the value as the customer name
+  // So, check if the first letter is a capital, if not, assume the user is asleep, and fix it for them.
+  $name = ucwords($name);
+
+  if ($name) {
+    $result = db_query("SELECT * FROM {node} n INNER JOIN {erp_customer} c ON n.nid = c.nid WHERE type = 'erp_customer' AND title LIKE '%%%s%%'", $name);
+    $num_rows = FALSE;
+    while ($item = db_fetch_object($result)) {
+      $rows[] = l($item->customer_id .' - '. $item->title, 'node/'. $item->nid);
+      $num_rows = TRUE;
+    }
+
+    if ($num_rows) {
+      $output .= '<h1>Possible matching customers</h1>';
+      $output .= implode('<br />', $rows);
+    }
+    else {
+    drupal_set_message(t('No matching customers like !name', array('!name' => $name)));
+    }
+  }
+  else {
+    drupal_set_message(t('No matching customers', array('!name' => $name)));
+  }
+
+  $form['matches'] = array(
+    '#type' => 'markup',
+    '#value' => $output,
+  );
+
+  $form['#attributes'] = array('class' => 'customer-load');
+
+  $form['customer']['customer_name'] = array(
+    '#type' => 'textfield',
+    '#size' => 80,
+    '#maxlength' => 128,
+    '#default_value' => $name
+  );
+
+  // TODO Allow entering email address for auto user account creation?
+
+  $form['customer']['add'] = array(
+    '#type' => 'submit',
+    '#value' => t('Add new customer')
+  );
+
+  return $form;
+}
+
+/**
+ * Implementation of hook_submit().
+ *
+ * @param $form
+ * @param $form_state
+ * @return unknown_type
+ */
+function erp_customer_add_form_submit($form, $form_state) {
+  global $user;
+
+  $name = $form_state['values']['customer_name'];
+
+  if ($form_state['clicked_button']['#value'] == t('Add new customer')) {
+    erp_customer_search_load_add($name);
+  }
+}
+
+/**
+ * Helper function to submit a customer and bypass validation
+ * and take the user directly to the edit screen for completion
+ * of the details.
+ *
+ * @param $name
+ * @return unknown_type
+ */
+function erp_customer_search_load_add($name) {
+  global $user;
+
+  if (!$name) {
+    drupal_set_message(t('Can\'t add customer without a name'));
+    drupal_goto();
+  }
+
+  $node = new stdClass();
+  $node->title = $name;
+  $node->status = 1;
+  $node->uid = $user->uid;
+
+  if (module_exists('erp_franchise')) {
+    $node->name = variable_get('franchise_default', '');
+  }
+
+  $node->type = 'erp_customer';
+  $node->comment = 2;
+
+  $node->suburb = variable_get('erp_customer_default_suburb', '');
+  $node->state = variable_get('erp_customer_default_state', '');
+  $node->postcode = variable_get('erp_customer_default_postcode', '');
+
+  node_save($node);
+
+  $_SESSION['curr_customer'] = $node->nid;
+
+  return drupal_goto('node/'. $node->nid .'/edit');
+}
+
+/**
+ * Implementation of hook_perm().
+ *
+ * Since we are limiting the ability to create new nodes to certain users,
+ * we need to define what those permissions are here. We also define a permission
+ * to allow users to edit the nodes they created.
+ */
+function erp_customer_perm() {
+  return array(
+    'view customer',
+    'create customer',
+    'edit customer',
+    'edit own customer',
+    'edit all customers',
+    'list customers',
+    'autocomplete customers',
+    'admin customers',
+    'customer quick find block',
+  );
+}
+
+/**
+ * Implementation of hook_link().
+ *
+ * This is implemented so that an edit link is displayed for users who have
+ * the rights to edit a node.
+ */
+function erp_customer_link($type, $node = 0, $main) {
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_customer') {
+    $links = array_merge($links, module_invoke_all('erp_customer_link', $node));
+  }
+
+  return $links;
+}
+
+function erp_customer_erp_quickjump_c($number) {
+  $nid = erp_id_to_nid('customer', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Customer not found');
+    return '';
+  }
+}
+
+function erp_customer_erp_quickjump_info() {
+  return array('erp_customer' => t('c-xxx - load a customer using their number.'));
+}
+
+function erp_customer_admin_settings() {
+  if (module_exists('filebrowser')) {
+    $form = array_merge(
+      $form, array(
+        'customer_directory' => array(
+          '#type' => 'textfield',
+          '#title' => t('Default directory for customer docs'),
+          '#default_value' => variable_get('customer_directory', ''),
+          '#description' => t('Directory for customer docs.'))));
+  }
+
+  if (module_exists('book')) {
+    $form['erp_customer_use_book'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Utilise Customer->book integration?'),
+      '#default_value' => variable_get('erp_customer_use_book', TRUE)
+    );
+
+    $form['erp_customer_book_features'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Book features'),
+      '#collapsed' => (variable_get('erp_customer_use_book', TRUE) ? FALSE : TRUE),
+      '#collapsible' => TRUE,
+    );
+
+    $form['erp_customer_book_features']['erp_customer_doc_create'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Enable automatic creation of customer documentation for each customer created'),
+      '#default_value' => variable_get('erp_customer_doc_create', TRUE)
+    );
+
+    foreach (book_get_books() as $book) {
+      $options[$book['nid']] = $book['title'];
+    }
+
+    $form['erp_customer_book_features']['erp_customer_doc_book'] = array(
+      '#type' => 'select',
+      '#title' => t('Book for customer documentation'),
+      '#default_value' => variable_get('erp_customer_doc_book', ''),
+      '#options' => $options,
+    );
+
+    $form['erp_customer_book_features']['erp_customer_doc_parent'] = array(
+      '#type' => 'select',
+      '#title' => t('Parent item for customer documenation'),
+      '#default_value' => variable_get('erp_customer_doc_parent', ''),
+      '#options' => book_toc(variable_get('erp_customer_doc_book', ''), array(), 2),
+    );
+  }
+
+  $form['erp_cust_autocomplete_count'] =
+    array('#type' => 'textfield',
+          '#title' => t('Number of customers to show when autocompleting'),
+          '#default_value' => variable_get('erp_cust_autocomplete_count', 10));
+
+  $form['erp_customer_search_url'] =
+    array('#type' => 'textfield',
+          '#title' => t('URL to lookup customer details (default is australian business whitepages) from'),
+          '#default_value' => variable_get('erp_customer_search_url', 'http://www.whitepages.com.au/wp/busSearch.do'));
+
+  $form['erp_customer_search_extra'] =
+    array('#type' => 'textfield',
+          '#title' => t('Extra fields for customer lookup - use {customer} where the customer name is to go'),
+          '#default_value' => variable_get('erp_customer_search_extra', 'textOnly=true&submit=Search&subscriberName={customer}&state=SA'));
+
+  $form['erp_customer_default_suburb'] =
+    array('#type' => 'textfield',
+          '#title' => t('Default suburb for new customer'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => variable_get('erp_customer_default_suburb', ''));
+
+  $form['erp_customer_default_postcode'] =
+    array('#type' => 'textfield',
+          '#title' => t('Default postcode for new customer'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => variable_get('erp_customer_default_postcode', ''));
+
+  $form['erp_customer_default_state'] =
+    array('#type' => 'textfield',
+          '#title' => t('Default state for new customer'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => variable_get('erp_customer_default_state', ''));
+
+  $form += erp_set_next_id_form('erp_customer', 'Customer');
+
+  return system_settings_form($form);
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * Now it's time to describe the form for collecting the information
+ * specific to this node type. This hook requires us to return some HTML
+ * that will be later placed inside the form.
+ *
+ * In the case of the customer form, it may be presented a few ways, so
+ * Use those others to build the form.
+ */
+function erp_customer_form(&$node, $form_state) {
+  if (($node->title) &&
+      ($search_url = variable_get('erp_customer_search_url', NULL)) &&
+      ($search_extra = variable_get('erp_customer_search_extra', NULL))) {
+    $bussearch = l(t('Details search'), $search_url, array('query' => str_replace("{customer}", $node->title, $search_extra), 'fragment' => FALSE, 'absolute' => TRUE));
+  }
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Customer Name'),
+    '#size' => 60,
+    '#maxlength' => 255,
+    '#default_value' => $node->title,
+    '#required' => TRUE,
+    '#suffix' => $bussearch ? $bussearch : NULL
+  );
+
+  $form['customer_details'] = array(
+    '#prefix' => '<div class="customer-details">',
+    '#type' => 'fieldset',
+    '#title' => 'customer details',
+    '#collapsible' => TRUE,
+    '#tree' => FALSE,
+    '#suffix' => '</div>'
+  );
+
+  $form['customer_details']['physical_address'] = array(
+    '#prefix' => '<div class="customer-physical-address">',
+    '#type' => 'fieldset',
+    '#title' => 'customer address',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#tree' => FALSE,
+    '#suffix' => '</div>'
+  );
+
+  $form['customer_details']['physical_address']['address'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Address'),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->address
+  );
+
+  $form['customer_details']['physical_address']['suburb'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Suburb'),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->suburb
+  );
+
+  $form['customer_details']['physical_address']['state'] = array(
+    '#type' => 'textfield',
+    '#title' => t('State'),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#default_value' => $node->state
+  );
+
+  $form['customer_details']['physical_address']['postcode'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Postcode'),
+    '#size' => 12,
+    '#maxlength' => 12,
+    '#default_value' => $node->postcode
+  );
+
+  $form['customer_details']['postal_address'] = array(
+    '#prefix' => '<div class="customer-postal-address">',
+    '#type' => 'fieldset',
+    '#title' => 'customer postal address',
+    '#collapsible' => TRUE,
+    '#tree' => FALSE,
+    '#suffix' => '</div>'
+  );
+
+  $form['customer_details']['postal_address']['postal_address'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Address'),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->postal_address
+  );
+
+  $form['customer_details']['postal_address']['postal_suburb'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Suburb'),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->postal_suburb
+  );
+
+  $form['customer_details']['postal_address']['postal_state'] = array(
+    '#type' => 'textfield',
+    '#title' => t('State'),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#default_value' => $node->postal_state
+  );
+
+  $form['customer_details']['postal_address']['postal_postcode'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Postcode'),
+    '#size' => 12,
+    '#maxlength' => 12,
+    '#default_value' => $node->postal_postcode
+  );
+
+  $form['customer_details']['phone'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Phone'),
+    '#size' => 10,
+    '#maxlength' => 20,
+    '#default_value' => $node->phone
+  );
+
+  $form['customer_details']['fax'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Fax'),
+    '#size' => 10,
+    '#maxlength' => 20,
+    '#default_value' => $node->fax
+  );
+
+  $form['customer_details']['mobile'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Mobile'),
+    '#size' => 10,
+    '#maxlength' => 20,
+    '#default_value' => $node->mobile
+  );
+
+  $form['customer_details']['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->email
+  );
+
+  $form['customer_details']['homepage'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Homepage'),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->homepage
+  );
+
+  $form['customer_communications'] = array(
+    '#prefix' => '<div class="customer-communications">',
+    '#type' => 'fieldset',
+    '#title' => 'customer communications',
+    '#collapsible' => TRUE,
+    '#tree' => FALSE,
+    '#suffix' => '</div>'
+  );
+
+  $form['customer_communications']['terms'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Terms (days)'),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#default_value' => $node->terms
+  );
+
+  $form['customer_communications']['reminder_days'] = array(
+    '#type' => 'textfield',
+    '#title' => t('How often to send statements/reminders (days)'),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#default_value' => $node->reminder_days
+  );
+
+  $form['customer_communications']['specific_day'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Specific day of month to send statements on'),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#default_value' => $node->specific_day
+  );
+
+  if (module_exists('book')) {
+    if ($node->documentation || variable_get('erp_customer_use_book', FALSE)) {
+      $book = node_load($node->documentation);
+      $form['customer_details']['documentation'] = array(
+        '#type' => 'select',
+        '#title' => t('Documentation'),
+        '#options' => book_toc(variable_get('erp_customer_doc_book', ''), array(), 3),
+        '#default_value' => $book->book['mlid'],
+        '#description' => t('The documenation for this customer.')
+      );
+    }
+  }
+
+  $form['#validate'][] = 'erp_customer_custom_validate';
+
+  return $form;
+}
+
+function erp_customer_theme() {
+  return array(
+    'erp_customer_info' => array(
+      'arguments' => array('node' => NULL)
+    )
+  );
+}
+
+function _customer_record_build($node) {
+  $new_customer = '';
+
+  $new_customer->franchisee = $node->franchisee;
+  $new_customer->address = $node->address;
+  $new_customer->suburb = $node->suburb;
+  $new_customer->state = $node->state;
+  $new_customer->postcode = $node->postcode;
+  $new_customer->phone = $node->phone;
+  $new_customer->fax = $node->fax;
+  $new_customer->mobile = $node->mobile;
+  $new_customer->email = $node->email;
+  $new_customer->homepage = $node->homepage;
+  $new_customer->type = 'erp_customer';
+
+  return $new_customer;
+}
+
+function _erp_customer_find($cust_name) {
+  if ($pos = stripos($cust_name, "]")) {
+    $cid = drupal_substr($cust_name, 0, $pos);
+
+    $cid = str_replace(array("[", "]"), "", $cid);
+    $customer = node_load(erp_id_to_nid('customer', $cid));
+  }
+  else {
+    $customer = node_load(array('title' => $cust_name, 'type' => 'erp_customer'));
+  }
+
+  if ($customer) {
+    return $customer;
+  }
+  else {
+    return 0;
+  }
+}
+
+/**
+ * Implementation of hook_validate().
+ */
+function erp_customer_custom_validate(&$form, &$form_state) {
+  // Dont bother validating if we are deleting
+  if ($form_state['clicked_button']['#value'] != t('Delete')) {
+    if (!$form_state['values']['address'] && !$form_state['values']['postal_address']) {
+      form_set_error('address', t('You need to enter <strong>either</strong> a physical or postal address for every customer'));
+      form_set_error('postal_address', t('You need to enter either a physical or postal address for every customer'));
+    }
+
+    if (!$form_state['values']['phone'] && !$form_state['values']['mobile']) {
+      form_set_error('phone', t('You need to enter at least a phone or mobile number for every customer'));
+      form_set_error('mobile', t('You need to enter at least a phone or mobile number for every customer'));
+    }
+  }
+}
+
+function erp_customer_field_validate($form_state, $type) {
+  if (empty($form_state['values']['customer'])) {
+    form_set_error('customer', t('Each %type must have an associated customer.', array('%type' => $type)));
+  }
+  else {
+    $customer = _erp_customer_find($form_state['values']['customer']);
+
+    if (!$customer->nid) {
+      form_set_error('customer', t('The customer %name does not exist.', array('%name' => theme('placeholder', $form_state['values']['customer']))));
+    }
+  }
+}
+
+/**
+ * Implementation of hook_insert().
+ *
+ * As a new node is being inserted into the database, we need to do our own
+ * database inserts.
+ */
+function erp_customer_insert($node) {
+  // Create customer documentation (child book page) as specified in customer admin
+  if (variable_get('erp_customer_doc_create', TRUE) && user_access('create book content')) {
+    global $user;
+    $book_page->uid = $user->uid;
+    $book_page->name = $user->name;
+    $book_page->type = 'book';
+    $book_page->book['bid'] = variable_get('erp_customer_doc_book', '1');
+    $book_page->book['plid'] = variable_get('erp_customer_doc_parent', '1');
+    $book_page->title = $node->title;
+    $book_page->body = $node->title . t(' Documentation');
+    $book_page->weight = 0;
+    $book_page->status = 1;
+    $book_page->comment = 2;
+    // TODO Need to link book to customer here
+    node_save($book_page);
+
+    erp_customer_set_customer($node->title, $book_page);
+
+    $node->documentation = $book_page->nid;
+  }
+
+  drupal_write_record('erp_customer', $node);
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * As an existing node is being updated in the database, we need to do our own
+ * database updates.
+ */
+function erp_customer_update($node) {
+  // Translate the book mlid to a nid
+  $book = book_link_load($node->documentation);
+  $node->documentation = $book['nid'];
+
+  // Ensure the doc node is shown as assigned to this customer
+  erp_customer_set_customer($node->title, $book);
+
+  drupal_write_record('erp_customer', $node, array('nid'));
+}
+
+/**
+ * Implementation of hook_delete().
+ *
+ * When a node is deleted, we need to clean up related tables.
+ */
+function erp_customer_delete($node) {
+  db_query('DELETE FROM {erp_customer} WHERE nid = %d', $node->nid);
+  db_query('DELETE FROM {erp_customer_link} WHERE customer_nid = %d', $node->nid);
+}
+
+/**
+ * Implementation of hook_load().
+ *
+ * Now that we've defined how to manage the node data in the database, we
+ * need to tell Drupal how to get the node back out. This hook is called
+ * every time a node is loaded, and allows us to do some loading of our own.
+ */
+function erp_customer_load($node) {
+  $additions = db_fetch_object(db_query('SELECT * FROM {erp_customer} WHERE nid = %d', $node->nid));
+
+  if (!$additions->postal_address) {
+  	$additions->postal_address = $additions->address;
+  }
+  if (!$additions->postal_suburb) {
+    $additions->postal_suburb = $additions->suburb;
+  }
+  if (!$additions->postal_state) {
+    $additions->postal_state = $additions->state;
+  }
+  if (!$additions->postal_postcode) {
+    $additions->postal_postcode = $additions->postcode;
+  }
+
+  return $additions;
+}
+
+/**
+ * Automagically load the customer name for certain node types
+ *
+ * @param unknown_type $node
+ * @param unknown_type $op
+ * @param unknown_type $teaser
+ * @param unknown_type $page
+ */
+function erp_customer_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
+  $customer_types = array('erp_purchase_order', 'erp_quote', 'erp_invoice', 'erp_cash_sale', 'erp_job', 'erp_payment', 'book');
+
+  if (in_array($node->type, $customer_types)) {
+    switch ($op) {
+      case 'validate':
+        //erp_customer_set_customer($node->customer_name, $node);
+        break;
+
+      case 'update':
+      case 'insert':
+        erp_customer_set_customer($node->customer_name, $node);
+        break;
+
+      case 'load':
+        if ($node->type == 'book') {
+          $customer = erp_customer_link_locate($node->nid);
+          $node->customer = $customer->title;
+        }
+        else {
+          if ($node->customer_nid) {
+            $customer = node_load($node->customer_nid);
+            $node->customer = $customer->title;
+          }
+        }
+        break;
+
+      case 'delete':
+        db_query("DELETE FROM {erp_customer_link} WHERE nid = %d", $node->nid);
+        break;
+
+      case 'view':
+        if ($node->type == 'book') {
+          // See if there is already a customer related
+          $customer = erp_customer_link_locate($node);
+          if (!$customer) {
+            $customer_title = '';
+          }
+          else {
+            $customer_title = $customer->title;
+          }
+          $output = '<div class="customer">';
+          $output .= t('Customer: ') . l($customer_title, 'node/'. $customer->nid);
+          $output .= '</div>';
+          $node->content['customer'] = array('#value' => $output, '#weight' => -10);
+        }
+        break;
+
+    }
+  }
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_customer_view(&$node, $teaser, $page) {
+  // If its an existing node, set it as the "current" customer
+  if ($node->nid) {
+    erp_customer_set_current($node);
+  }
+
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_customer_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function erp_customer_set_current($node) {
+  if ($_SESSION['curr_customer'] != $node->nid) {
+    $_SESSION['curr_customer'] = $node->nid;
+
+    drupal_set_message($node->title . t(" - set as \"current\" customer."), 'status');
+  }
+}
+
+function erp_customer_erp_extra_info($node) {
+  $output = '';
+
+  if ($node->customer_nid) {
+    $customer = node_load($node->customer_nid);
+    if ($customer) {
+      $link = l($customer->title, 'node/'. $customer->nid);
+      $output .= '<div class="customer">';
+      $output .= t('Customer: ') . $link;
+
+      // Render Customer Info etc
+      $output .= "<br /><div class=\"cust_info\">";
+      if ($customer->address && $node->type == 'erp_job') {
+        $output .= "<strong>Physical address: </strong>";
+        $output .= "<br />". check_plain($customer->address);
+
+        if ($customer->suburb) {
+          $output .= "<br />". check_plain($customer->suburb);
+        }
+        if($node->state) {
+          $output .= $node->state . "<br>";
+        }
+        if ($customer->postcode) {
+          $output .= "<br />". check_plain($customer->postcode);
+        }
+      }
+      else {
+        $output .= "<strong>Postal address: </strong>";
+        $output .= "<br />". check_plain($customer->postal_address);
+
+        if ($customer->suburb) {
+          $output .= "<br />". check_plain($customer->postal_suburb);
+        }
+        if($node->state) {
+          $output .= $node->postal_state . "<br>";
+        }
+        if ($customer->postcode) {
+          $output .= "<br />". check_plain($customer->postal_postcode);
+        }
+      }
+
+      if ($customer->phone) {
+        $output .= '<br />Phone: '. check_plain($customer->phone);
+      }
+      if ($customer->mobile) {
+        $output .= '<br />Mobile: '. check_plain($customer->mobile);
+      }
+      $output .= "</div>";
+      $output .= '</div>';
+
+    }
+  }
+
+  return $output;
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_customer_info($node) {
+  $output = '<div class="customer-info">';
+
+  $output .= '<div class="customer-id">';
+  $output .= t('Customer id: ') . $node->customer_id;
+  $output .= '</div>';
+
+  $output .= '<div class="address">';
+  $output .= t('Address: ') . $node->address;
+  $output .= '</div>';
+
+  $output .= '<div class="suburb">';
+  $output .= t('Suburb: ') . $node->suburb;
+  $output .= '</div>';
+
+  $output .= '<div class="state">';
+  $output .= t('State: ') . $node->state;
+  $output .= '</div>';
+
+  $output .= '<div class="postcode">';
+  $output .= t('Postcode: ') . $node->postcode;
+  $output .= '</div>';
+
+  $output .= '<div class="postal-address">';
+  $output .= t('Postal address: ') . $node->postal_address;
+  $output .= '</div>';
+
+  $output .= '<div class="postal-suburb">';
+  $output .= t('Postal suburb: ') . $node->postal_suburb;
+  $output .= '</div>';
+
+  $output .= '<div class="postal-state">';
+  $output .= t('Postal state: ') . $node->postal_state;
+  $output .= '</div>';
+
+  $output .= '<div class="postal-postcode">';
+  $output .= t('Postal postcode: ') . $node->postal_postcode;
+  $output .= '</div>';
+
+  $output .= '<div class="phone">';
+  $output .= t('Phone: ') . $node->phone;
+  $output .= '</div>';
+
+  $output .= '<div class="fax">';
+  $output .= t('Fax: ') . $node->fax;
+  $output .= '</div>';
+
+  $output .= '<div class="mobile">';
+  $output .= t('Mobile: ') . $node->mobile;
+  $output .= '</div>';
+
+  $output .= '<div class="email">';
+  $output .= t('Email: ') . l($node->email, 'mailto:'. $node->email);
+  $output .= '</div>';
+
+  $output .= implode(module_invoke_all('erp_customer_info', $node));
+
+  $output .= '<div class="homepage">';
+  $output .= t('Homepage: ') . l($node->homepage, $node->homepage);
+  $output .= '</div>';
+
+  $output .= '<div class="documentation">';
+  if (module_exists('book')) {
+    if ($node->documentation) {
+      $book = node_load($node->documentation);
+      $output .= t('Documentation: ') . l($book->title, 'node/'. $book->nid);
+    }
+  }
+  $output .= '</div>';
+
+  $output .= _erp_customer_quicktabs();
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+/**
+ * Small function to render quicktabs programmatically, so we can do cooler permission stuff.
+ */
+function _erp_customer_quicktabs() {
+	global $user;
+
+  $tabs['invoices'] = array(
+    'title' => t('Invoices'),
+    'type' => 'view',
+    'vid' => 'erp_invoice_customer',
+    'display' => 'block_1',
+    'args' => '%1',
+  );
+
+  // Only show purchase orders to staff, of course.
+  if (in_array('staff', $user->roles) || in_array('franchisee', $user->roles)) {
+	  $tabs['purchase_orders'] = array(
+	    'title' => t('Purchase orders'),
+	    'type' => 'view',
+	    'vid' => 'erp_purchase_order_customer',
+	    'display' => 'block_1',
+	    'args' => '%1',
+	  );
+  }
+
+  $tabs['quotes'] = array(
+    'title' => t('Quotes'),
+    'type' => 'view',
+    'vid' => 'erp_quote_customer',
+    'display' => 'block_1',
+    'args' => '%1',
+  );
+
+  $tabs['jobs'] = array(
+    'title' => t('Jobs'),
+    'type' => 'view',
+    'vid' => 'erp_job_customer',
+    'display' => 'block_1',
+    'args' => '%1',
+  );
+
+  $tabs['cash_sale'] = array(
+    'title' => t('Cash sales'),
+    'type' => 'view',
+    'vid' => 'erp_cash_sale_customer',
+    'display' => 'block_1',
+    'args' => '%1',
+  );
+
+  $tabs['payment'] = array(
+    'title' => t('Payments'),
+    'type' => 'view',
+    'vid' => 'erp_payment_customer',
+    'display' => 'block_1',
+    'args' => '%1',
+  );
+
+  $tabs['book_pages'] = array(
+    'title' => t('Book pages'),
+    'type' => 'view',
+    'vid' => 'erp_book_customer',
+    'display' => 'block_1',
+    'args' => '%1',
+  );
+
+  $quicktabs['qtid'] = 'customer-tabs';
+  $quicktabs['tabs'] = $tabs;
+  $quicktabs['style'] = 'Basic';
+  $quicktabs['ajax'] = TRUE;
+
+  return theme('quicktabs', $quicktabs);
+}
+
+/**
+ * Autocomplete function
+ */
+function erp_customer_autocomplete($string) {
+  $string = check_plain($string);
+
+  // Strip out the leading customer code if we can
+  $string = preg_replace('/\[.*?\] - /', '', $string);
+
+  $sql = "SELECT n.title,c.customer_id FROM {node} n INNER JOIN {erp_customer} c ON n.nid=c.nid WHERE n.type = 'erp_customer' AND (n.title LIKE '%%%s%%' OR c.customer_id LIKE '%%%s%%') ORDER BY n.title ASC ";
+  $sql = db_rewrite_sql($sql);
+
+  $result = db_query_range($sql, $string, $string, 0, variable_get('erp_cust_autocomplete_count', 10));
+  while ($customer = db_fetch_object($result)) {
+    $matches["[". $customer->customer_id ."] - ". $customer->title] =
+      check_plain("[". $customer->customer_id ."] - ". $customer->title);
+  }
+  print drupal_to_js($matches);
+  exit();
+}
+
+function erp_customer_views_api() {
+  return array('api' => 2.0);
+}
+
+/**
+ * Add the customer details to the book form
+ *
+ * @param unknown_type $form
+ * @param unknown_type $form_state
+ * @param unknown_type $form_id
+ */
+function erp_customer_form_alter(&$form, &$form_state, $form_id) {
+  switch ($form_id) {
+  case 'book_node_form':
+    // See if there is already a customer related
+    if (!$form['#node']->customer) {
+      // There isn't, try and find them
+      if ($form['#node']->nid) {
+        $customer = erp_customer_link_locate($form['#node']->nid);
+      }
+    }
+    else {
+      // Convert from customer name to node
+      $customer = _erp_customer_find($form['#node']->customer);
+    }
+
+    // If still no customer, try and grab one from the url/session
+    if (!$customer) {
+      if (isset($_GET['customer']) && is_numeric($_GET['customer'])) {
+        $customer_nid = $_GET['customer'];
+        $customer = node_load($customer_nid);
+      }
+      else {
+        // Default to current "session" customer
+        $customer = node_load($_SESSION['curr_customer']);
+      }
+    }
+
+    // If STILL no customer, default to ''
+    if (!$customer) {
+      $customer_default = '';
+    }
+    else {
+      // Otherwise, format it how we like.
+      $customer_default = "[". $customer->customer_id ."] - ". $customer->title;
+    }
+
+    // Add the form element
+    $form['customer_name'] =
+      array('#type' => 'textfield',
+            '#title' => t('Customer'),
+            '#size' => 40,
+            '#weight' => -1,
+            '#maxlength' => 128,
+            '#default_value' => $customer_default,
+            '#autocomplete_path' => 'erp/customer/autocomplete');
+
+    break;
+  }
+}
+
+/**
+ * Take an existing node, and get the customer related
+ *
+ * @param unknown_type $node
+ */
+function erp_customer_link_locate($param = array()) {
+  // Allow parsing a node or nid
+  if (is_object($param)) {
+    $nid = $param->nid;
+  }
+  else {
+    $nid = $param;
+  }
+
+  // There can only ever be one, so we can use db_result
+  $customer_nid = db_result(db_query("SELECT customer_nid FROM {erp_customer_link} WHERE nid = %d", $nid));
+
+  return node_load($customer_nid);
+}
+
+function erp_customer_set_customer($name, $node) {
+  $customer_node = _erp_customer_find($name);
+
+  db_query("DELETE FROM {erp_customer_link} WHERE nid = '%d'", $node->nid);
+  db_query("INSERT INTO {erp_customer_link} (customer_nid, nid) VALUES (%d, %d)", $customer_node->nid, $node->nid);
+}

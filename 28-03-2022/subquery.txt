@@ -1,0 +1,55 @@
+﻿MariaDB [task2]> select name, city , country from customer where id in(select id from customer);
++------------+---------+---------+
+| name       | city    | country |
++------------+---------+---------+
+| ronak      | jaipur  | india   |
+| somay      | jaipur  | india   |
+| ram        | kota    | india   |
+| raju       | punr    | india   |
+| shanu      | jaipur  | india   |
+| jain       | mumbai  | india   |
+| ronak Jain | florida | usa     |
+| shubham    | jaipur  | india   |
+| ravi       | pune    | india   |
+| RJ         | jaipur  | india   |
++------------+---------+---------+
+10 rows in set (0.004 sec)
+
+MariaDB [task2]> select * from customer where id in (select id from customer where id>30);
++-----+------------+---------+---------+------------+--------+
+| id  | name       | city    | country | phone_no   | mode   |
++-----+------------+---------+---------+------------+--------+
+|  40 | raju       | punr    | india   | 9269587820 | online |
+|  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|  90 | ravi       | pune    | india   | 9265587820 | online |
+| 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
++-----+------------+---------+---------+------------+--------+
+7 rows in set (0.004 sec)
+
+MariaDB [task2]> select name, city, country from customer;
++------------+---------+---------+
+| name       | city    | country |
++------------+---------+---------+
+| ronak      | jaipur  | india   |
+| somay      | jaipur  | india   |
+| ram        | kota    | india   |
+| raju       | punr    | india   |
+| shanu      | jaipur  | india   |
+| jain       | mumbai  | india   |
+| ronak Jain | florida | usa     |
+| shubham    | jaipur  | india   |
+| ravi       | pune    | india   |
+| RJ         | jaipur  | india   |
++------------+---------+---------+
+10 rows in set (0.001 sec)
+
+MariaDB [task2]> select name, city , country from customer where id in(select city = jaipur from customer);
+ERROR 1054 (42S22): Unknown column 'jaipur' in 'field list'
+MariaDB [task2]> select name, city , country from customer where id in(select city from customer where city = jaipur);
+ERROR 1054 (42S22): Unknown column 'jaipur' in 'where clause'
+MariaDB [task2]> 
+
+

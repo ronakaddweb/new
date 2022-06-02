@@ -1,0 +1,43 @@
+<?php
+
+function erp_timesheet_install() {
+  drupal_install_schema('erp_timesheet');
+}
+
+function erp_timesheet_schema() {
+  $schema['erp_timesheet'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'timesheet_id' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'customer_id' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'job_id' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'timesheet_id' => array('timesheet_id')),
+  );
+
+  $schema['erp_timesheet_data'] = array(
+    'fields' => array(
+      'timesheet_id' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'line' => array('type' => 'int', 'not null' => FALSE, 'disp-width' => '10'),
+      'time' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'customer_id' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'ts_date' => array('type' => 'varchar', 'length' => '12', 'not null' => FALSE, 'default' => ''),
+      'dept' => array('type' => 'varchar', 'length' => '20', 'not null' => FALSE, 'default' => ''),
+      'comments' => array('type' => 'text', 'not null' => TRUE),
+      'invoiced' => array('type' => 'char', 'length' => '1', 'not null' => TRUE, 'default' => 'N')),
+    'indexes' => array(
+      'nid' => array('timesheet_id')),
+  );
+
+  return $schema;
+}
+
+function erp_timesheet_update_6001() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_timesheet} CHANGE COLUMN customer_id customer_nid int(10) NOT NULL");
+  $ret[] = update_sql("ALTER TABLE {erp_timesheet_data} CHANGE COLUMN customer_id customer_nid int(10) NOT NULL");
+
+  return $ret;
+}

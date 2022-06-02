@@ -1,0 +1,79 @@
+<?php
+
+function erp_cash_sale_install() {
+  drupal_install_schema('erp_cash_sale');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} SET schema_version = 6002 WHERE name = 'erp_cash_sale'");
+}
+
+function erp_cash_sale_schema() {
+  $schema['erp_cash_sale'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'oid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'cash_sale_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'payment_type' => array('type' => 'varchar', 'length' => '30', 'not null' => FALSE),
+      'payment_amount' => array('type' => 'float', 'not null' => FALSE, 'default' => 0, 'disp-width' => '20'),
+      'total' => array('type' => 'float', 'not null' => FALSE, 'default' => 0, 'disp-width' => '20')),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'cash_sale_id' => array('cash_sale_id')),
+  );
+
+  $schema['erp_cash_sale_data'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'line' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'item_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'completed_date' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => '0.00'),
+      'extra' => array('type' => 'text', 'size' => 'medium'),
+      'price' => array('type' => 'float', 'not null' => FALSE, 'default' => 0, 'disp-width' => '20'),
+      'qty' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'serial' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
+    'primary key' => array('nid', 'line'),
+  );
+
+  return $schema;
+}
+
+function erp_cash_sale_update_6001() {
+  $ret = array();
+
+  // Fix cash sale id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale} ADD UNIQUE (cash_sale_id)");
+
+  $high_cash_sale = db_result(db_query("SELECT MAX(cash_sale_id) FROM {erp_cash_sale}"));
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale} CHANGE COLUMN cash_sale_id cash_sale_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale} AUTO_INCREMENT = ". $high_cash_sale++);
+
+  // Now look through all the cash sales and update the erp_cash_sale_data table with their nid
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale_data} ADD COLUMN nid INT(10) NOT NULL FIRST");
+  $result = db_query("SELECT nid, cash_sale_id FROM {erp_cash_sale} ORDER BY cash_sale_id ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_cash_sale_data} SET nid = ". $row['nid'] ." WHERE cash_sale_id = ". $row['cash_sale_id'];
+    $ret[] = update_sql($sql);
+  }
+
+  // Fix the cash sale data key to no longer require cash_sale_id in the data table
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale_data} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale_data} ADD PRIMARY KEY (nid,line)");
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale_data} DROP cash_sale_id");
+
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale} CHANGE COLUMN customer_id customer_nid int(10) NOT NULL");
+
+  $ret[] = update_sql("ALTER TABLE {erp_cash_sale_data} CHANGE COLUMN serials serial VARCHAR(255) NOT NULL");
+
+  return $ret;
+}
+
+function erp_cash_sale_update_6002() {
+  $ret = array();
+
+  db_change_field($ret, 'erp_cash_sale_data', 'extra', 'extra', array('type' => 'text', 'size' => 'medium'));
+
+  return $ret;
+}

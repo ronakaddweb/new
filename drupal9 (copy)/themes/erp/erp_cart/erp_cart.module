@@ -1,0 +1,586 @@
+<?php
+// $Id: erp_cart.module,v 1.24.2.11 2010/02/25 06:02:26 simon Exp $
+
+/**
+ * @file
+ *
+ * erp cart subroutines
+ *
+ */
+
+function erp_cart_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    return t('ERP cart module.');
+    break;
+  }
+  return NULL;
+}
+
+function erp_cart_erp_item_link($node) {
+  if (erp_cart_item_in_cart($_SESSION['curr_customer'], $node->nid)) {
+    $links['erp_cart_remove_item_link'] =
+      array('title' => t('remove from cart'),
+            'href' => 'erp/cart/remove/'. $node->nid,
+            'query' => 'destination=node/'. $node->nid);
+  }
+  else {
+    $links['erp_cart_add_item_link'] =
+      array('title' => t('add to cart'),
+            'href' => 'erp/item/cart/'. $node->nid,
+            'query' => 'destination=node/'. $node->nid);
+  }
+
+  return $links;
+}
+
+function erp_cart_erp_quote_link($node) {
+  $links['erp_cart_erp_quote_link'] = array(
+    'title' => t('add items to cart'),
+    'href' => 'erp/cart/inject/'. $node->nid,
+    'attributes' => array('title' => t('Add the contents of this quote into the cart for a particular customer.'))
+  );
+  return $links;
+}
+
+function erp_cart_menu() {
+  $items['admin/erp/cart'] = array(
+    'title' => 'Cart',
+    'description' => 'Configure erp cart settings',
+    'access arguments' => array('admin erp cart'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_cart_admin_settings')
+  );
+
+  $items['erp/cart/clear'] = array(
+    'page callback' => 'erp_cart_clear_form',
+    'access arguments' => array('access erp cart'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/cart/page'] = array(
+    'page callback' => 'erp_cart_page',
+    'access arguments' => array('access erp cart'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/cart/add/%'] = array(
+    'title' => 'Item add to cart',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_cart_add_to_cart', 3),
+    'access arguments' => array('access erp cart'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/cart/remove/%'] = array(
+    'page callback' => 'erp_cart_remove',
+    'page arguments' => array(3),
+    'access arguments' => array('access erp cart'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/cart/inject/%'] = array(
+    'page callback' => 'erp_cart_inject',
+    'page arguments' => array(3),
+    'access arguments' => array('access erp cart'),
+    'type' => MENU_CALLBACK
+  );
+
+  return $items;
+}
+
+
+function erp_cart_item_link($node, $serial = NULL) {
+  if ($serial) {
+    $serial = '/' . $serial;
+  }
+  if (variable_get('erp_item_popup', FALSE) == TRUE) {
+    $links['erp_item_cart_link'] =
+      array('title' => erp_cart_add_image(),
+            'href' => 'erp/cart/add/'. $node->nid . $serial .'/popup',
+            'attributes' => array('onclick' => "window.open(this.href, 'add to cart', 'width=480,height=320,scrollbars=no,status=no'); return false"));
+  }
+  else {
+    $links['erp_item_cart_link'] =
+      array('title' => erp_cart_add_image(),
+            'href' => 'erp/cart/add/'. $node->nid . $serial,
+            'query' => 'destination=node/'. $node->nid);
+  }
+
+  return $links;
+}
+
+/**
+ * Item/Cart have interdependencies, so even though this perhaps isn't really
+ * the right place for this function, here it is.
+ *
+ */
+function erp_cart_add_to_cart($form, $nid, $serial = NULL, $popup = NULL) {
+  $form = array();
+  $node = node_load($nid);
+
+  // Include tax on sell price when adding to cart (and format it accordingly)
+  // TODO The array_pop etc is a bit .. ick.
+  $node->sell_price = erp_currency(array_pop(module_invoke_all('erp_tax_inc_amount', $node->sell_price)), ' ');
+
+  //$form['#action'] = url('erp/item/cart_confirm');
+
+  $form['item_add_to_cart']['nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->nid);
+
+  $form['item_add_to_cart']['popup'] =
+    array('#type' => 'hidden',
+          '#default_value' => $popup);
+
+  $form['item_add_to_cart']['title'] =
+    array('#type' => 'textfield',
+          '#title' => t('Item Description'),
+          '#size' => 60,
+          '#maxlength' => 255,
+          '#default_value' => $node->title);
+
+  $form['item_add_to_cart']['buy_price'] =
+    array('#type' => 'textfield',
+          '#title' => t('Buy Price'),
+          '#size' => 10,
+          '#value' => erp_currency($node->buy_price));
+
+  $form['item_add_to_cart']['sell_price'] =
+    array('#type' => 'textfield',
+          '#title' => t('Sell Price'),
+          '#size' => 10,
+          '#value' => erp_currency($node->sell_price));
+
+  if ($serial) {
+    $form['item_add_to_cart']['serial'] =
+      array('#type' => 'textfield',
+            '#title' => t('Item serial number'),
+            '#size' => 10,
+            '#maxlength' => 255,
+            '#default_value' => $serial);
+  }
+  else {
+    $form['item_add_to_cart']['qty'] =
+      array('#type' => 'textfield',
+            '#title' => t('Quantity to add to cart'),
+            '#size' => 10,
+            '#default_value' => 1);
+  }
+
+  $form['item_add_to_cart']['extra'] =
+    array('#type' => 'textarea',
+          '#title' => t('Extra Text'),
+          '#default_value' => '');
+
+  if (variable_get('erp_invoice_serial', FALSE)) {
+    $stock_list = erp_stock_list_avail($node->nid);
+    $form['item_add_to_cart']['serial'] =
+      array('#type' => 'select',
+            '#title' => t('Select stock items to add to cart'),
+            '#options' => $stock_list,
+            '#multiple' => TRUE,
+            '#size' => min(count($stock_list), 10));
+  }
+
+  $form['item_add_to_cart']['submit'] =
+    array('#type' => 'submit',
+          '#value' => t('Add to cart'));
+
+  if ($popup) {
+    $base_url .= '/';
+
+    $output = "<html>\n<head>\n<base href=\"$base_url\" />\n";
+    $output .= drupal_get_html_head();
+    //$output .= theme_get_styles();
+    $output .= "</head>\n<body style=\"padding: 5px;\"><div id=\"content\" class=\"content-both\"><div id=\"content-wrap\" class=\"content-wrap-both\">\n";
+    $output .= $form;
+    $output .= '</div></div></body></html>';
+
+    print $output;
+    exit;
+  }
+  else {
+    return $form;
+  }
+}
+
+/**
+ * Item/Cart have interdependencies, so even though this perhaps isn't really
+ * the right place for this function, here it is.
+ *
+ */
+function erp_cart_add_to_cart_submit($form, &$form_state) {
+  // If we got serial numbers, then qty wont be present, need to work it out
+  if ($form_state['values']['serial']) {
+    $item_list = explode(',', $form_state['values']['serial']);
+    $form_state['values']['qty'] = count($item_list);
+  }
+  erp_cart_add_item($_SESSION['curr_customer'], $form_state['values']);
+
+  $node = node_load($form_state['values']['nid']);
+
+  drupal_set_message(t('Added: ') . $form_state['values']['qty'] . t(' x ') . l($node->title, 'node/'. $form_state['values']['nid']) . t(' to cart.'));
+
+  if (!$form_state['values']['popup']) {
+    drupal_goto();
+  }
+  else {
+    print "<script language=\"javascript\">window.close()</script>";
+    exit;
+  }
+}
+
+
+function erp_cart_perm() {
+  return array('admin erp cart', 'access erp cart');
+}
+
+function erp_cart_add_item($customer_nid, $item) {
+  global $user;
+
+  if (!$customer_nid) {
+    $customer_nid = 0;
+  }
+
+  erp_cart_delete_item($customer_nid, $item);
+
+  db_query("INSERT INTO {erp_cart} (uid, customer_nid, iid, description, qty, buy_price, sell_price, extra, serial, created) VALUES (%d, %d, %d, '%s', %d, '%s', '%s', '%s', '%s', %d)",
+    $user->uid, $customer_nid, $item['nid'], $item['title'], $item['qty'], $item['buy_price'], $item['sell_price'], $item['extra'], serialize($item['serial']), time());
+
+  erp_cart_clean();
+}
+
+function erp_cart_remove($nid) {
+  $customer = $_SESSION['curr_customer'];
+
+  erp_cart_delete_item($customer, array('nid' => $nid));
+
+  drupal_goto();
+}
+
+function erp_cart_inject($nid) {
+/* TODO The 'op' element in the form values is deprecated.
+   Each button can have #validate and #submit functions associated with it.
+   Thus, there should be one button that submits the form and which invokes
+   the normal form_id_validate and form_id_submit handlers. Any additional
+   buttons which need to invoke different validate or submit functionality
+   should have button-specific functions. */
+  if ($form_state['values']['op']) {
+    $customer = _erp_customer_find($_POST['edit']['name']);
+
+    if ($customer) {
+      $result = db_query("SELECT * FROM {erp_quote_data} WHERE quote_id = %d", $_POST['edit']['quote_id']);
+
+      // Clear the cart for the customer first.
+      erp_cart_clear($customer);
+
+      while ($row = db_fetch_object($result)) {
+        $item = node_load($row->item_nid);
+        erp_cart_add_item($customer->nid, array('nid' => $row->item_nid, 'qty' => $row->qty, 'title' => $item->desc, 'buy_price' => $item->buy_price, 'sell_price' => $row->price, 'extra' => $row->extra));
+      }
+    }
+    drupal_goto('node/'. $customer->nid);
+  }
+  else {
+    $custid = $_SESSION['curr_customer'];
+    $customer = node_load($custid);
+    $name = $customer->title;
+
+    $quote = node_load($nid);
+    $quote_id = $quote->quote_id;
+
+    $form['#action'] = url('erp/cart/inject/0');
+    $form['customer']['name'] =
+      array('#type' => 'textfield',
+            '#size' => 80,
+            '#maxlength' => 128,
+            '#default_value' => $name,
+            '#autocomplete_path' => 'erp/customer/autocomplete');
+
+    $form['customer']['quote_id'] =
+      array('#type' => 'hidden',
+            '#default_value' => $quote_id);
+
+    $form['customer']['add'] =
+      array('#type' => 'submit',
+            '#value' => t('Add to customers cart'));
+
+    $output .= drupal_get_form('customer_cart_form', $form);
+
+    return $output;
+  }
+  return NULL;
+}
+
+function erp_cart_delete_item($customer_nid, $item) {
+  global $user;
+
+  db_query("DELETE FROM {erp_cart} WHERE uid = %d AND customer_nid = %d AND iid = %d", $user->uid, $customer_nid, $item['nid']);
+}
+
+function erp_cart_list_items($customer) {
+  global $user;
+
+  if (!$customer) {
+    $customer = 0;
+  }
+
+  $result = db_query("SELECT iid, description, qty, buy_price, sell_price, extra, serial FROM {erp_cart} WHERE uid = %d AND customer_nid = %d", $user->uid, $customer);
+
+  while ($item = db_fetch_array($result)) {
+    $items[$item['iid']] = array($item['qty'], $item['description'], $item['buy_price'], $item['sell_price'], $item['extra'], $item['serial']);
+  }
+
+  return $items;
+}
+
+function erp_cart_load(&$node) {
+  $items = erp_cart_list_items($node->customer_nid);
+  $i = 0;
+  foreach ($items as $iid => $details) {
+    $item_node = node_load($iid);
+    $node->entries['item'][$i] = $iid;
+    $node->entries['item_desc'][$i] = erp_item_desc_build($item_node);
+    $node->entries['qty'][$i] = $details[0];
+    $node->entries['price'][$i] = $details[3];
+    $node->entries['extra'][$i] = $details[4];
+    $i++;
+  }
+}    
+
+
+function erp_cart_item_in_cart($customer, $nid) {
+  global $user;
+
+  if (!$customer) {
+    $customer = 0;
+  }
+
+  $qty = db_result(db_query("SELECT qty FROM {erp_cart} WHERE uid = %d AND customer_nid = %d AND iid = %d", $user->uid, $customer, $nid));
+  if ($qty > 0) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function erp_cart_clear($customer) {
+  global $user;
+
+  db_query("DELETE FROM {erp_cart} WHERE uid = %d AND customer_nid = %d", $user->uid, $customer);
+}
+
+function erp_cart_clear_form() {
+  $customer = $_SESSION['curr_customer'];
+
+  erp_cart_clear($customer);
+  drupal_goto('');
+}
+
+function erp_cart_clean() {
+  db_query("DELETE FROM {erp_cart} WHERE created < %d", time() - variable_get('erp_cart_max_age', 2592000));
+
+  if (variable_get('erp_cart_clear_customer', FALSE)) {
+    unset($_SESSION['curr_customer']);
+  }
+}
+
+function erp_cart_admin_settings() {
+  $form['erp_cart_max_age'] =
+    array('#type' => 'select',
+          '#title' => t('Time to keep unconverted cart entries.'),
+          '#options' => array(0 => t('Unlimited'),
+                              86400 => t('One day'),
+                              604800 => t('One week'),
+                              1209600 => t('Two weeks'),
+                              2592000 => t('One month'),
+                              5184000 => t('Two months')),
+          '#default_value' => variable_get('erp_cart_max_age', 604800));
+
+  $form['erp_cart_serial'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Record serial numbers with cart items?'),
+          '#default_value' => variable_get('erp_cart_serial', FALSE));
+
+  $form['erp_cart_clear_customer'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Clear customer when cart is cleared?'),
+          '#default_value' => variable_get('erp_cart_clear_customer', FALSE));
+
+  return system_settings_form($form);
+}
+
+function erp_cart_block($op = 'list', $delta = 0) {
+  if ($op == 'list') {
+    $blocks = array();
+    $blocks[0]['info'] = t('ERP cart customer');
+    $blocks[1]['info'] = t('ERP cart contents');
+    return $blocks;
+  }
+  elseif ($op == 'view' && user_access('access erp cart')) {
+    switch ($delta) {
+    case 0:
+      $block['content'] = erp_cart_curr_customer();
+      $block['subject'] = t('Current');
+      break;
+    case '1':
+      $block['content'] = erp_cart_details();
+      $block['subject'] = t('Current');
+      break;
+    }
+    return $block;
+  }
+  return NULL;
+}
+
+function erp_cart_curr_customer() {
+  if ($_SESSION['curr_customer']) {
+    $customer = node_load($_SESSION['curr_customer']);
+
+    $output .= '<div id="customer">';
+    $output .= l($customer->title, 'node/'. $_SESSION['curr_customer']);
+    $output .= '</div>';
+
+    $links = array();
+    if (erp_cart_list_items($_SESSION['curr_customer'])) {
+      $links[] = l(t('view cart'), 'erp/cart/page');
+    }
+    else {
+      $links[] = l(t('cart is empty'), 'erp/cart/page');
+    }
+
+    $output .= '<div id="curr-customer">';
+    $output .=  implode('<br />', $links);
+    $output .= '</div>';
+  }
+  return $output;
+}
+
+function erp_cart_details() {
+  // Figure out where we are currently in the menu tree
+  $object = menu_get_object();
+
+  if ($object->nid) {
+    $menu_nid = $object->nid;
+  }
+
+  $links = array();
+
+  $items = erp_cart_list_items($_SESSION['curr_customer']);
+
+  if (count($items)) {
+    $output .= '<div id="cart">';
+    $output .= t('Items') .'<br />';
+    foreach ($items as $nid => $qty_desc) {
+      $item = node_load($nid);
+      $item_rows[] = array($qty_desc[0], l(shrink($item->code, 12), 'node/'. $nid), l(erp_cart_remove_image(), 'erp/cart/remove/'. $nid, array('query' => 'destination=node/'. $menu_nid, 'attributes' => array('absolute' => TRUE, 'html' => TRUE))));
+    }
+
+    // Old way.
+    //$output .= implode('<br />', $items_list);
+    $output .= theme('table', array(), $item_rows);
+    $output .= '<br />';
+
+    $links = array_merge($links, module_invoke_all('erp_cart_link', ''));
+
+    $links['erp_cart_details_view_cart'] =
+      array('title' => t('view cart'),
+            'href' => 'erp/cart/page');
+    $links['erp_cart_details_clear_cart'] =
+      array('title' => t('clear cart'),
+            'href' => 'erp/cart/clear');
+
+    if ($links) {
+      $output .=  theme('links', $links);
+    }
+    $output .= '</div>';
+  }
+  return $output;
+}
+
+function erp_cart_add_image() {
+  global $base_path;
+
+  return '<img src="'. $base_path . drupal_get_path('module', 'erp') .'/images/add_to_cart_clear.gif" alt="'. t('Add to cart') .'" />';
+}
+
+function erp_cart_remove_image() {
+  global $base_path;
+
+  return '<img src="'. $base_path . drupal_get_path('module', 'erp') .'/images/remove_from_cart_clear.gif" alt="'. t('Remove from cart') .'" />';
+}
+
+function erp_cart_page() {
+  $links = array();
+
+  if ($_SESSION['curr_customer']) {
+    $output .= '<div id="customer">';
+    $customer = node_load($_SESSION['curr_customer']);
+    $output .= l($customer->title, 'node/'. $_SESSION['curr_customer']); // erp_title_shrink was here?
+    $output .= '</div>';
+  }
+
+  $items = erp_cart_list_items($_SESSION['curr_customer']);
+
+  if (count($items)) {
+    $output .= '<div id="cart">';
+    //$output .= t('Items') .'<br />';
+    foreach ($items as $nid => $qty_desc) {
+      $stock_item = node_load($nid);
+      //$items_list[] = $qty_desc[0] .' x '. l($stock_item->code, 'node/'. $nid) .'&nbsp;'. l(erp_cart_remove_image(), 'erp/cart/remove/'. $nid, array('attributes' => array('absolute' => TRUE, 'html' => TRUE)));
+
+      // If its a single entry, make it an array.
+      if (!is_array($qty_desc[5])) {
+        $qty_desc[5] = array($qty_desc[5]);
+      }
+
+      if (variable_get('erp_cart_serial', FALSE)) {
+        $item_rows[] = array($qty_desc[0],
+                             l($stock_item->code, 'node/'. $nid),
+                             l($stock_item->title, 'node/'. $nid),
+                             l(implode(",\n", $qty_desc[5]), 'node/'. $nid),
+                             l($items[$nid][3], 'node/'. $nid),
+                             l(erp_cart_remove_image(), 'erp/cart/remove/'. $nid,
+                               array('attributes' => array('absolute' => TRUE), 'html' => TRUE, 'query' => 'destination=erp/cart/page')));
+      }
+      else {
+        $item_rows[] = array($qty_desc[0],
+                             l($stock_item->code, 'node/'. $nid),
+                             l($stock_item->title, 'node/'. $nid),
+                             l($items[$nid][3], 'node/'. $nid),
+                             l(erp_cart_remove_image(), 'erp/cart/remove/'. $nid,
+                               array('attributes' => array('absolute' => TRUE), 'html' => TRUE, 'query' => 'destination=erp/cart/page')));
+      }
+    }
+
+    //$output .= implode('<br />', $items_list);
+    if (variable_get('erp_cart_serial', FALSE)) {
+      $output .= theme('table', array('Quantity', 'Item', 'Desc', 'Serial(s)', 'Price', 'Remove'), $item_rows);
+    }
+    else {
+      $output .= theme('table', array('Quantity', 'Item', 'Desc', 'Price', 'Remove'), $item_rows);
+    }
+    $output .= '<br />';
+
+    $links = array_merge($links, module_invoke_all('erp_cart_link', ''));
+
+    $links[] =
+      array('title' => t('clear'),
+            'href' => 'erp/cart/clear');
+
+    $output .=  theme('links', $links);
+    $output .= '</div>';
+  }
+  else {
+    $output .= '<div id="cart">';
+    $output .= t('No items in cart');
+    $output .= '</div>';
+  }
+  return $output;
+}
+
+function erp_cart_views_api() {
+  return array('api' => 2.0);
+}

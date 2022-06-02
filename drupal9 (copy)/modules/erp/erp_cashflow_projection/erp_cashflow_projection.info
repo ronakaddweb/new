@@ -1,0 +1,15 @@
+; $id$
+name = erp cashflow projection
+description = ERP cashflow project provides projected future cashflow based on customer payment history
+package = "ERP"
+dependencies[] = erp
+dependencies[] = erp_invoice
+dependencies[] = erp_payment
+core = 6.x
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

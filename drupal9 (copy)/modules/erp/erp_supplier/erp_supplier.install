@@ -1,0 +1,68 @@
+<?php
+// $Id: erp_supplier.install,v 1.5.2.11 2010/02/25 06:02:28 simon Exp $
+
+/**
+ * @file
+ * Install, update and uninstall functions for the erp_supplier module.
+ */
+function erp_supplier_install() {
+  drupal_install_schema('erp_supplier');
+
+  // The 6001/2 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6002 WHERE name = 'erp_supplier'");
+}
+
+function erp_supplier_schema() {
+  $schema['erp_supplier'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'supplier_id' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10'),
+      'shortname' => array('type' => 'varchar', 'length' => '15', 'not null' => FALSE),
+      'address' => array('type' => 'text', 'not null' => TRUE),
+      'suburb' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'state' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'postcode' => array('type' => 'varchar', 'length' => '12', 'not null' => TRUE, 'default' => ''),
+      'phone' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'fax' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'mobile' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'email' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'email_format' => array('type' => 'int', 'not null' => TRUE, 'default' => 3, 'disp-width' => '2'),
+      'homepage' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'documentation' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'lookup_url' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
+    'primary key' => array('nid'),
+    'unique keys' => array(
+      'supplier_id' => array('supplier_id')),
+  );
+
+  return $schema;
+}
+
+function erp_supplier_update_6001() {
+  $ret = array();
+
+  // Fix supplier id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} DROP INDEX supplier_code");
+
+  $high_supplier = db_result(db_query("SELECT MAX(supplier_code) FROM {erp_supplier}"));
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} CHANGE COLUMN supplier_code supplier_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} AUTO_INCREMENT = ". $high_supplier++);
+
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} ADD UNIQUE (supplier_id)");
+
+  return $ret;
+}
+
+function erp_supplier_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} CHANGE COLUMN postcode postcode VARCHAR(12)");
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} CHANGE COLUMN phone phone VARCHAR(20)");
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} CHANGE COLUMN fax fax VARCHAR(20)");
+  $ret[] = update_sql("ALTER TABLE {erp_supplier} CHANGE COLUMN mobile mobile VARCHAR(20)");
+
+  return $ret;
+}
+

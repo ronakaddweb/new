@@ -1,0 +1,58 @@
+<?php
+
+function erp_audit_install() {
+  drupal_install_schema('erp_audit');
+}
+
+// @todo: Conversion for audit_date from date to int
+
+function erp_audit_schema() {
+  $schema['erp_audit'] = array(
+    'fields' => array(
+      'audit_date' => array('type' => 'int', 'not null' => 0, 'default' => ''),
+      'computer_name' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'main_user' => array('type' => 'varchar', 'length' => '60', 'not null' => TRUE, 'default' => ''),
+      'location' => array('type' => 'varchar', 'length' => '60', 'not null' => TRUE, 'default' => ''),
+      'branch' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'cpu' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'ram' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'hdd' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'video' => array('type' => 'varchar', 'length' => '40', 'not null' => TRUE, 'default' => ''),
+      'pc_label' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'ip_address' => array('type' => 'varchar', 'length' => '16', 'not null' => TRUE, 'default' => ''),
+      'subnet_mask' => array('type' => 'varchar', 'length' => '16', 'not null' => TRUE, 'default' => ''),
+      'gateway' => array('type' => 'varchar', 'length' => '16', 'not null' => TRUE, 'default' => ''),
+      'dns1' => array('type' => 'varchar', 'length' => '16', 'not null' => TRUE, 'default' => ''),
+      'dns2' => array('type' => 'varchar', 'length' => '16', 'not null' => TRUE, 'default' => ''),
+      'workgroup' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'logon_password' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'email' => array('type' => 'varchar', 'length' => '5', 'not null' => TRUE, 'default' => ''),
+      'email_account' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'email_password' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'mazda_email' => array('type' => 'varchar', 'length' => '5', 'not null' => TRUE, 'default' => ''),
+      'mazda_email_account' => array('type' => 'varchar', 'length' => '50', 'not null' => TRUE, 'default' => ''),
+      'mazda_email_password' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'other_email' => array('type' => 'varchar', 'length' => '5', 'not null' => TRUE, 'default' => ''),
+      'other_email_settings' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'proxy' => array('type' => 'varchar', 'length' => '5', 'not null' => TRUE, 'default' => ''),
+      'reynolds' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'reynolds_sw' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'internet_access' => array('type' => 'varchar', 'length' => '5', 'not null' => TRUE, 'default' => ''),
+      'mail_access' => array('type' => 'varchar', 'length' => '5', 'not null' => TRUE, 'default' => ''),
+      'operating_system' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'operating_system_license' => array('type' => 'varchar', 'length' => '30', 'not null' => TRUE, 'default' => ''),
+      'operating_system_key' => array('type' => 'varchar', 'length' => '50', 'not null' => TRUE, 'default' => ''),
+      'antivirus' => array('type' => 'varchar', 'length' => '5', 'not null' => TRUE, 'default' => ''),
+      'antivirus_version' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'antivirus_registration' => array('type' => 'varchar', 'length' => '50', 'not null' => TRUE, 'default' => ''),
+      'antivirus_expiry' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'periphals' => array('type' => 'text', 'not null' => TRUE),
+      'software' => array('type' => 'text', 'not null' => TRUE),
+      'network_data_point' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'reynolds_data_point' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'telephone_data_point' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'other_data_point' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => '')),
+  );
+
+  return $schema;
+}

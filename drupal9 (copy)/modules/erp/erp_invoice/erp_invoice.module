@@ -1,0 +1,1278 @@
+<?php
+// $Id: erp_invoice.module,v 1.19.2.35 2011/01/14 00:55:04 simon Exp $
+
+/**
+ * @file
+ *
+ * invoice module
+ */
+
+/**
+ * Implementation of hook_help().
+ *
+ */
+function erp_invoice_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP invoice module.');
+      break;
+    case 'node/add#erp_invoice':
+      // This description shows up when users click "create content."
+      return t('ERP invoice.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * invoice node name
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_invoice_node_name($node) {
+  return t('erp invoice');
+}
+
+/**
+ * Implementation of invoice_node_info
+ *
+ * @return array of information
+ */
+function erp_invoice_node_info() {
+  return array(
+    'erp_invoice' => array(
+      'name' => t('erp invoice'),
+      'module' => 'erp_invoice',
+      'description' => t('ERP Invoice module'),
+      'title_label' => t('Invoice entered by'),
+      'has_body' => FALSE
+    )
+  );
+}
+
+/**
+ * Return whether the user has access to a function or not.
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_invoice_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('add invoice', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit all invoices', $account)) {
+        return TRUE;
+      }
+
+      if (user_access('edit own invoice', $account) && ($account->uid == $node->uid)) {
+        return TRUE;
+      }
+      break;
+
+    case 'view':
+      if (user_access('view invoices', $account)) {
+        return TRUE;
+      }
+      break;
+
+  }
+}
+
+/**
+ * invoice permissions
+ *
+ * @return unknown
+ */
+function erp_invoice_perm() {
+  return array(
+    'add invoice',
+    'edit invoice',
+    'view invoices',
+    'edit own invoice',
+    'edit all invoices',
+    'admin invoice',
+    'view statements'
+  );
+}
+
+/**
+ * Provide links for invoicing
+ *
+ * @param unknown_type $type
+ * @param unknown_type $node
+ * @param unknown_type $main
+ * @return unknown
+ */
+function erp_invoice_link($type, $node = 0, $main) {
+  global $user;
+
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_invoice') {
+    $links = array_merge($links, module_invoke_all('erp_invoice_link', $node));
+  }
+  return $links;
+}
+
+
+function erp_invoice_erp_quote_link($node) {
+  if (user_access('add invoice')) {
+    $links['erp_invoice_erp_quote_link'] = array(
+      'title' => t('create invoice'),
+      'href' => 'node/add/erp-invoice/'. $node->nid,
+      'attributes' => array('title' => t('Create an invoice for this quote.')),
+      'query' => 'quote='. $node->nid
+    );
+    return $links;
+  }
+  return array();
+}
+
+function erp_invoice_erp_goods_receive_link($node) {
+  if (user_access('add invoice')) {
+    $links['erp_invoice_erp_goods_receive_link'] = array(
+      'title' => t('create invoice'),
+      'href' => 'node/add/erp-invoice/'. $node->nid,
+      'attributes' => array('title' => t('Create an invoice for this goods receipt.')),
+      'query' => 'goods_receive='. $node->nid
+    );
+    return $links;
+  }
+  return array();
+}
+
+function erp_invoice_erp_timesheet_link($node) {
+  if (user_access('add invoice')) {
+    $links['erp_invoice_erp_timesheet_link'] = array(
+      'title' => t('create invoice'),
+      'href' => 'node/add/erp-invoice/'. $node->nid,
+      'attributes' => array('title' => t('Create an invoice for this timesheet.')),
+      'query' => 'timesheet='. $node->nid
+    );
+    return $links;
+  }
+  return array();
+}
+
+function erp_invoice_erp_customer_link($node) {
+  if (user_access('add invoice')) {
+    $links['erp_invoice_erp_customer_link'] = array(
+      'title' => t('create invoice'),
+      'href' => 'node/add/erp-invoice',
+      'attributes' => array('title' => t('Create an invoice for this customer.')),
+      'query' => 'customer='. $node->nid
+    );
+  }
+
+  if (user_access('view statements')) {
+    $links['erp_invoice_erp_customer_statement_link'] = array(
+      'title' => t('show statement'),
+      'href' => 'node/'. $node->nid .'/statement',
+      'attributes' => array('title' => t('Show the statement for this customer.'))
+    );
+    return $links;
+  }
+
+  return array();
+}
+
+/**
+ * Provide a link for the erp cart to create an invoice
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_invoice_erp_cart_link($node) {
+  if (user_access('add invoice')) {
+    $links['erp_invoice_erp_cart_link'] = array(
+      'title' => t('create invoice'),
+      'href' => 'node/add/erp-invoice/erp_cart',
+      'attributes' => array('title' => t('Create invoice from cart')),
+      'query' => 'customer='. $_SESSION['curr_customer']
+    );
+    return $links;
+  }
+  return array();
+}
+
+/**
+ * invoice menu functions
+ *
+ * @param unknown_type $may_cache
+ * @return unknown
+ */
+function erp_invoice_menu() {
+  $items['admin/erp/invoice'] = array(
+    'title' => 'Invoice',
+    'description' => 'Configure erp invoice settings',
+    'access arguments' => array('admin invoice'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_invoice_admin_settings')
+  );
+
+  $items['erp/balances'] = array(
+    'title' => 'Balances',
+    'access arguments' => array('view statements'),
+    'page callback' => 'erp_invoice_balances'
+  );
+
+  $items['node/%node/statement'] = array(
+    'title' => 'Statement',
+    'access arguments' => array('view statements'),
+    'page callback' => 'erp_invoice_customer_statement',
+    'page arguments' => array(1),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+function erp_invoice_erp_quickjump_i($number) {
+  $nid = erp_id_to_nid('invoice', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Invoice not found');
+    return '';
+  }
+}
+
+function erp_invoice_erp_quickjump_info() {
+  return array('erp_invoice' => t('i-xxx - load an invoice using its number.'));
+}
+
+function erp_invoice_admin_settings() {
+  drupal_set_title(t('Invoice settings'));
+
+  $form['erp_invoice_email_bcc'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email address to BCC when sending invoices'),
+    '#default_value' => variable_get('erp_invoice_email_bcc', ''),
+    '#description' => t('Its advisable to setup an email account that will receive a copy of all invoices sent out to customers. Enter the email address for that account here.')
+  );
+
+  $form['erp_invoice_serial'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Record serial numbers with quotes, invoices & cash sale items? (common settting between both modules)'),
+    '#default_value' => variable_get('erp_invoice_serial', FALSE),
+    '#description' => t('ERP has the ability to track goods by serial number, making warranty returns (in particular) easier to track.')
+  );
+
+  $form['erp_invoice_default_count'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Default count for new invoice lines'),
+    '#size' => 10,
+    '#maxlength' => 10,
+    '#default_value' => variable_get('erp_invoice_default_count', 1),
+    '#description' => t('The default count placed in the add new line section on the invoice entry form.')
+  );
+
+  $form['erp_invoice_default_date'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Default the date field for new invoice lines to "now"?'),
+    '#default_value' => variable_get('erp_invoice_default_date', TRUE),
+    '#description' => t('Check the box if you would like the current date to be inserted into the invoice line automatically.')
+  );
+
+  $form['erp_invoice_default_item'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Default item for new invoice lines'),
+    '#size' => 40,
+    '#maxlength' => 255,
+    '#autocomplete_path' => 'erp/item/autocomplete/sell',
+    '#default_value' => variable_get('erp_invoice_default_item', ''),
+    '#description' => t('If you have a small number of items, or sell a lot of one thing, it may make sense to have it also set as the default in the invoice line.')
+  );
+
+  $form['erp_invoice_cron_statements'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Use cron to send statements when payment passes the terms of the invoice?'),
+    '#default_value' => variable_get('erp_invoice_cron_statements', FALSE),
+    '#description' => t('PDF or HTML statements can be automatically sent out by ERP using cron to remind customers that their invoice(s) are due. Check this box to enable this functionality.')
+  );
+
+  $form['erp_invoice_email_text'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Enter text for invoice emails'),
+    '#default_value' => variable_get('erp_invoice_email_text', ''),
+  );
+
+  $form['erp_invoice_statement_subject'] = array(
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#maxlength' => 60,
+    '#title' => t('Enter subject for the statement emails.'),
+    '#default_value' => variable_get('erp_invoice_statement_subject', ''),
+    '#description' => t('Note that the customer name is automatically prefixed before this text.'),
+  );
+
+  $form['erp_invoice_statement_text'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Enter text for the statement emails'),
+    '#default_value' => variable_get('erp_invoice_statement_text', ''),
+  );
+
+  $form += erp_set_next_id_form('erp_invoice', 'Invoice');
+
+  return system_settings_form($form);
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * Now it's time to describe the form for collecting the information
+ * specific to this node type. This hook requires us to return some HTML
+ * that will be later placed inside the form.
+ */
+function erp_invoice_form(&$node, $form_state) {
+  global $user;
+
+  drupal_add_js(drupal_get_path('module', 'erp') .'/erp.js', 'footer');
+  drupal_add_tabledrag('draggable-entries', 'order', 'sibling', 'entry-line');
+
+  $type = node_get_types('type', $node);
+
+  $total_price = 0;
+
+  // If this is being created from a quote, load the node data from that now.
+  $extra_ops = arg(3);
+  if (is_numeric($extra_ops)) {
+    $newnode = $node;
+    $node = node_load($extra_ops);
+
+    erp_transfer_data($node, $newnode, 'erp_invoice');
+
+    // Redirect the user to the invoice if this was created from another type.
+    $node->erp_redirect = TRUE;
+  }
+  elseif ($extra_ops == 'erp-cart') {
+    erp_cart_load($node);
+  }
+
+  erp_set_customer($node);
+
+  // Default to the current user.
+  if (!$node->owner) {
+    $node->owner = $user->name;
+  }
+
+  if (!$node->title) {
+    $node->title = $user->name .' - '. date("d/m/Y");
+  }
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => check_plain($type->title_label),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->title,
+    '#required' => TRUE
+  );
+
+  $form['invoice_details'] =
+    array('#prefix' => '<div class="invoice-details">',
+          '#type' => 'fieldset',
+          '#title' => 'invoice details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->invoice_id) {
+    $form['invoice_details']['invoice_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'invoice id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->invoice_id);
+  }
+
+  $form['invoice_details']['customer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Customer'),
+          '#default_value' => $node->customer,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['customer_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->customer_nid);
+
+  $form['invoice_details']['po'] =
+    array('#type' => 'textfield',
+          '#title' => t('Purchase Order'),
+          '#default_value' => $node->po,
+          '#size' => 20,
+          '#maxlength' => 40);
+
+  $form['invoice_details']['printed'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Printed'),
+          '#default_value' => $node->printed);
+
+  $form['invoice_details']['invoice_status'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Closed'),
+          '#default_value' => $node->invoice_status);
+
+  // Dunno that this is used anywhere.... ahh timesheets
+  // TODO do it differently. Maybe a geralised ref module. type, source_nid, dest_nid
+  $form['refs'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->refs);
+
+  $form['entries'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Current Invoice Items'),
+          '#tree' => TRUE,
+          '#theme' => 'entries',
+          '#collapsible' => FALSE,
+          '#prefix' => '<div id="entries">',
+          '#suffix' => '</div>');
+
+  erp_add_newline($node, $form_state);
+
+  // Now actually display the rows
+  for ($i = 0; $i < count($node->entries['qty']); $i++) {
+    $form['entries']['line'][$i] =
+      array('#type' => 'hidden',
+            '#attributes' => array('class' => 'entry-line'),
+            '#default_value' => ($i + 1));
+
+    $form['entries']['qty'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 6,
+            '#maxlength' => 6,
+            '#default_value' => $node->entries['qty'][$i],
+            '#prefix' => '<div class="qty">',
+            '#suffix' => '</div>');
+
+    $form['entries']['item'][$i] =
+      array('#type' => 'hidden',
+            '#default_value' => $node->entries['item'][$i]);
+
+    $form['entries']['item_desc'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 20,
+            '#maxlength' => 255,
+            '#autocomplete_path' => 'erp/item/autocomplete/sell',
+            '#default_value' => $node->entries['item_desc'][$i],
+            '#prefix' => '<div class="item-desc">',
+            '#suffix' => '</div>');
+
+    // Before saving, its not an int
+    if (is_numeric($node->entries['completed_date'][$i])) {
+      $date_default = date_convert($node->entries['completed_date'][$i], DATE_UNIX, DATE_DATETIME);
+    }
+    else {
+      $date_default = $node->entries['completed_date'][$i]['date'];
+    }
+    $form['entries']['completed_date'][$i] =
+      array('#type' => 'date_popup',
+            '#size' => 12,
+            '#default_value' => $date_default,
+            '#date_format' => "Y-m-d",
+            '#prefix' => '<div class="completed-date">',
+            '#suffix' => '</div>');
+
+    $form['entries']['extra'][$i] =
+      array('#type' => 'textarea',
+            '#cols' => 40,
+            '#rows' => 2,
+            '#default_value' => $node->entries['extra'][$i],
+            '#prefix' => '<div class="extra">',
+            '#suffix' => '</div>');
+
+    if (variable_get('erp_invoice_serial', FALSE)) {
+      if (!is_array($node->entries['serial'][$i])) {
+        $node->entries['serial'][$i] = array($node->entries['serial'][$i]);
+      }
+
+      $form['entries']['serial'][$i] =
+        array('#type' => 'textfield',
+              '#size' => 20,
+              '#maxlength' => 255,
+              '#default_value' => implode(",", $node->entries['serial'][$i]),
+              '#prefix' => '<div class="serial">',
+              '#suffix' => '</div>');
+    }
+
+    $form['entries']['price'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 12,
+            '#maxlength' => 12,
+            '#default_value' => erp_currency($node->entries['price'][$i]),
+            '#prefix' => '<div class="price">',
+            '#suffix' => '</div>');
+
+    // Remove button.
+    $form['entries']['delete'][$i] = array(
+      '#type' => 'submit',
+      '#name' => 'delete_' . $i,
+      '#value' => t('X'),
+      '#weight' => 1,
+      '#submit' => array('erp_remove_line_submit'),
+      '#ahah' => array(
+        'path' => 'erp/linejs/' . ($i + 1),
+        'wrapper' => 'entries',
+        'method' => 'replace',
+        'effect' => 'none'
+      ),
+    );
+
+    $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+  }
+
+  $form['entries']['total'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="total">',
+          '#title' => 'Total Price',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#value' => erp_currency($total_price),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline'] =
+    array('#type' => 'fieldset',
+          '#prefix' => '<div class="newline">',
+          '#tree' => TRUE,
+          '#theme' => 'newline',
+          '#title' => t('New Invoice Line'),
+          '#collapsible' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['qty'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="qty">',
+          '#size' => 6,
+          '#maxlength' => 6,
+          '#default_value' => variable_get('erp_invoice_default_count', ''),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item_desc'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="item-desc">',
+          '#size' => 20,
+          '#maxlength' => 255,
+          '#autocomplete_path' => 'erp/item/autocomplete/sell',
+          '#default_value' => variable_get('erp_invoice_default_item', ''),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['completed_date'] =
+    array('#type' => 'date_popup',
+          '#size' => 12,
+          '#default_value' => (variable_get('erp_invoice_default_date', FALSE) ? date("Y-m-d") : ''),
+          '#date_format' => "Y-m-d",
+          '#prefix' => '<div class="completed-date">',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['extra'] =
+    array('#type' => 'textarea',
+          '#prefix' => '<div class="extra">',
+          '#cols' => 40,
+          '#rows' => 2,
+          '#maxlength' => 4096,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  if (variable_get('erp_invoice_serial', FALSE)) {
+    $form['entries']['newline']['serial'] =
+      array('#type' => 'textfield',
+            '#prefix' => '<div class="serial">',
+            '#size' => 20,
+            '#maxlength' => 255,
+            '#default_value' => '',
+            '#suffix' => '</div>');
+  }
+
+  $form['entries']['newline']['price'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="price">',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => erp_item_price_from_string(variable_get('erp_invoice_default_item', '')),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item'] =
+    array('#type' => 'hidden',
+          '#default_value' => '');
+
+  $form['entries']['newline']['addline'] =
+    array('#type' => 'submit',
+          '#prefix' => '<div class="addline">',
+          '#name' => 'addline',
+          '#value' => t('Add line/Recalc'),
+          '#submit' => array('erp_add_newline_submit'),
+          '#ahah' => array(
+            'path' => 'erp/linejs/0',
+            'wrapper' => 'entries',
+            'method' => 'replace',
+            'effect' => 'none'
+          ),
+          '#suffix' => '</div>');
+
+  $form['#validate'][] = 'erp_invoice_custom_validate';
+
+  $form['#action'] = erp_fix_ahah_action($node);
+
+  return $form;
+}
+
+function erp_invoice_custom_validate($form, $form_state) {
+  if ($form_state['clicked_button']['#id'] == 'edit-submit') {
+    erp_customer_field_validate($form_state, t('invoice'));
+
+    erp_newline_fields_validate($form_state);
+  }
+}
+
+/**
+ * Helper function to insert invoice data after node submission
+ *
+ * @param unknown_type $node
+ */
+function _insert_invoice_data($node) {
+  // Clear out old entries.
+  db_query("DELETE FROM {erp_invoice_data} WHERE nid = %d", $node->nid);
+
+  // Insert new entries
+  if (is_array($node->entries['qty'])) {
+    for ($i = 0 ; $i < count($node->entries['qty']); $i++) {
+      if (!empty($node->entries['qty'][$i]) and !empty($node->entries['item_desc'][$i])) {
+        $item_info = erp_item_desc_breakup($node->entries['item_desc'][$i]);
+        $supplier_id = $item_info[0];
+        $stock_code = $item_info[1];
+
+        $supplier_nid = erp_id_to_nid('supplier', $supplier_id);
+
+        $num_nodes = db_result(db_query("SELECT COUNT(n.nid) FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' AND supplier_nid = %d", $stock_code, $supplier_nid));
+        if ($num_nodes == 1) {
+          $result = db_query("SELECT * FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' AND supplier_nid = %d", $stock_code, $supplier_nid);
+          $stock_node = db_fetch_object($result);
+        }
+        else {
+          watchdog('erp-invoice', 'erp_item: non unique erp_item - '. $stock_code);
+        }
+
+        // Save each row
+        $line = array(
+          'nid' => $node->nid,
+          'line' => $i,
+          'item_nid' => $stock_node->nid,
+          'completed_date' => date_convert($node->entries['completed_date'][$i], DATE_DATETIME, DATE_UNIX),
+          'extra' => $node->entries['extra'][$i],
+          'qty' => $node->entries['qty'][$i],
+          'price' => $node->entries['price'][$i],
+          'serial' => $node->entries['serial'][$i],
+          'sell_date' => time(),
+          'stock_code' => $stock_node->nid,
+          'sell_price' => $node->entries['price'],
+        );
+
+        drupal_write_record('erp_invoice_data', $line);
+
+        module_invoke_all('erp_invoice_entry', $line);
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_insert().
+ *
+ * As a new node is being inserted into the database, we need to do our own
+ * database inserts.
+ */
+function erp_invoice_insert(&$node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  // get the total
+  $node->total = erp_get_total($node);
+
+  if ($node->invoice_status) {
+    $node->invoice_status = 'C';
+  }
+  else {
+    $node->invoice_status = 0;
+  }
+
+  // save to the invoice table
+  drupal_write_record('erp_invoice', $node);
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // save line data into invoice_data table
+  _insert_invoice_data($node);
+
+  module_invoke_all('erp_invoice_save', $node);
+
+  // Trickily redirect the user directly to the invoice if they created this from a job.
+  if ($node->erp_redirect) {
+    return url('node/'. $node->nid);
+  }
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * As an existing node is being updated in the database, we need to do our own
+ * database updates.
+ */
+function erp_invoice_update(&$node) {
+  // First, make stock from previous version of this invoice available again.
+  // Using this form for node_load forces loading from the db, which in this
+  // case is what we want.
+  $old_node = node_load(array('nid' => $node->nid));
+
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  // get the total
+  $node->total = erp_get_total($node);
+
+  // Check to see if payment status is changed based on a different total than before
+  $result = db_query("SELECT total,invoice_status FROM {erp_invoice} WHERE nid = %d", $node->nid);
+  $row = db_fetch_array($result);
+  if (round($row['total'], 2) <> round($node->total, 2)) {
+    $node->invoice_status = 0;
+    $node->payment_changed = TRUE;
+  }
+  if ($node->invoice_status) {
+    $node->invoice_status = 'C';
+  }
+  else {
+    $node->invoice_status = 0;
+  }
+
+  // save to the invoice table
+  drupal_write_record('erp_invoice', $node, array('nid'));
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into invoice_data table
+  _insert_invoice_data($node);
+
+  module_invoke_all('erp_invoice_save', $node);
+}
+
+/**
+ * Implementation of hook_delete().
+ *
+ * When a node is deleted, we need to clean up related tables.
+ */
+function erp_invoice_delete($node) {
+  db_query('DELETE FROM {erp_invoice} WHERE nid = %d', $node->nid);
+  db_query('DELETE FROM {erp_invoice_data} WHERE nid = %d', $node->nid);
+
+  module_invoke_all('erp_invoice_delete', $node);
+}
+
+/**
+ * Mark an invoice printed
+ */
+function erp_invoice_printed($node) {
+  if (is_object($node)) {
+    $nid = $node->nid;
+  }
+  else {
+    $nid = $node;
+  }
+  db_query("UPDATE {erp_invoice} SET printed = '1'  WHERE nid = %d", $nid);
+}
+
+/**
+ * Invoice payment status accessor function
+ */
+function erp_invoice_is_open($node) {
+  $result = db_query("SELECT invoice_status FROM {erp_invoice} WHERE nid = %d", $node->nid);
+  if (db_result($result) != 'C') {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implementation of hook_load().
+ *
+ * Now that we've defined how to manage the node data in the database, we
+ * need to tell Drupal how to get the node back out. This hook is called
+ * every time a node is loaded, and allows us to do some loading of our own.
+ */
+function erp_invoice_load($node) {
+  $invoice = db_fetch_object(db_query('SELECT * FROM {erp_invoice} WHERE nid = %d', $node->nid));
+
+  $invoice->owner = erp_oid_validate($invoice->oid);
+
+  // Now load all the invoice entries
+  $result = db_query('SELECT * FROM {erp_invoice_data} WHERE nid = %d ORDER BY line ASC', $node->nid);
+
+  while ($invoice_data = db_fetch_array($result)) {
+    $invoice->entries['item'][] = $invoice_data['item_nid'];
+
+    $item = node_load($invoice_data['item_nid']);
+
+    $invoice->entries['item_desc'][] = erp_item_desc_build($item);
+    $invoice->entries['completed_date'][] = $invoice_data['completed_date'];
+    $invoice->entries['price'][] = $invoice_data['price'];
+    $invoice->entries['qty'][] = $invoice_data['qty'];
+    $invoice->entries['extra'][] = $invoice_data['extra'];
+    $invoice->entries['serial'][] = $invoice_data['serial'];
+  }
+
+  return $invoice;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_invoice_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_invoice_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function erp_invoice_theme() {
+  return array(
+    'erp_invoice_info' => array(
+      'arguments' => array('node' => NULL),
+    )
+  );
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_invoice_info($node) {
+  if ($node->printing) {
+    erp_invoice_printed($node);
+    return erp_print_info($node);
+  }
+  else {
+    return erp_screen_info($node);
+  }
+}
+
+function erp_invoice_outstanding($node) {
+  $result = db_query("SELECT nid FROM {erp_invoice} WHERE nid <> %d AND invoice_status <> 'C' AND customer_nid = %d", $node->nid, $node->customer_nid);
+
+  $header = array('Invoice Id', 'Date', 'Title', 'Amount');
+  if (!$node->printing) {
+    $header[] = 'Printed';
+  }
+
+  while ($nid = db_fetch_array($result)) {
+    $out = node_load($nid['nid']);
+    $row = array();
+    if (!$node->printing) {
+      $row[] = array('data' => l($out->invoice_id, 'node/'. erp_id_to_nid('invoice', $out->invoice_id)), 'class' => 'invoice-id');
+    }
+    else {
+      $row[] = array('data' => $out->invoice_id, 'class' => 'invoice-id');
+    }
+    $row[] = array('data' => format_date($out->created, 'small'), 'class' => 'invoice-date');
+    $row[] = array('data' => $out->title, 'class' => 'invoice-title');
+    $row[] = array('data' => erp_currency(_erp_payment_get_balance($out)), 'class' => 'invoice-amount');
+    if (!$node->printing) {
+      $row[] = array('data' => $out->printed ? t('Yes') : l(t('No'), 'node/'. erp_id_to_nid('invoice', $out->invoice_id)));
+    }
+    $rows[] = $row;
+
+    $total += _erp_payment_get_balance($out);
+  }
+
+  if (count($rows)) {
+    if ($node->invoice_status != 'C') {
+      $total += $node->total;
+    }
+
+    $row = array_fill(0, count($header) - 2, array());
+    $row[] = 'Total outstanding:';
+    $row[] = erp_currency($total);
+    $rows[] = $row;
+
+    $output .= '<br />';
+    $output .= '<div class="outstanding">';
+    $output .= '<h2>'. t('Other outstanding invoices') .'</h2>';
+    $output .= theme('table', $header, $rows);
+    $output .= '</div>';
+    return $output;
+  }
+}
+
+function views_handler_field_invoice_print($op, &$query, $argtype, $arg = '') {
+  $node = node_load($arg->nid);
+
+  switch ($op) {
+  default:
+    return module_invoke('erp_print', 'erp_invoice_link', $node);
+  }
+}
+
+
+function erp_invoice_customer_statement($node) {
+  $output = "<div class='statement-item'>\n";
+  $output .= _erp_invoice_statement_html($node->nid);
+  $output .= "</div>\n";
+
+  if (!$node->print_display) {
+    print $output;
+    die;
+  }
+  else {
+  	return $output;
+  }
+}
+
+function _erp_invoice_statement_html($nid) {
+  global $base_url;
+  //Load customer details
+  $customer = node_load($nid);
+
+  // Fix me :)
+  $store = node_load(erp_id_to_nid('store', $customer->store_id));
+
+   //Show the logo, omitting the path if it is to be emailed.
+  if (!$node->to_be_emailed) {
+    $filename = module_invoke('erp_store', 'erp_store_logo', $store);
+    $output = '<div class="logo"><img src="'. $filename .'" alt="'. $store->company .'" /></div>';
+  }
+  else {
+    $filename = module_invoke('erp_store', 'erp_store_logo', $store);
+    $logo = trim(substr($filename, strlen(file_directory_path())), '\\/');
+    $output = '<div class="logo"><img src="'. $logo .'" alt="'. $store->company .'" /></div>';
+  }
+
+   //name and address
+  $output .= '<div class="company-address">'.
+             $store->company .'<br />'.
+             $store->address .'<br />'.
+             $store->suburb .' '. $store->state .' '. $store->postcode .'<br />'.
+             'Phone '. $store->phone .'</div>';
+
+   //Statement details
+  $output .= '<div class="details">'.
+             '<h1>Statement</h1><br />'.
+             'ABN: '. $store->tax_id .'<br />'.
+             'Statement Date: '. format_date(time(), 'custom', 'd-m-Y') .'<br />'.
+             '</div>';
+
+   //Customer Details
+  $output .= '<div class="bill_to">';
+  $output .= '<strong>Bill to</strong><br />';
+  if ($customer) {
+    $output .= check_plain($customer->title) .'<br />';
+  }
+  if ($customer->address) {
+    $output .= check_plain($customer->address) .'<br />';
+  }
+  if ($customer->suburb) {
+    $output .= check_plain($customer->suburb) .'<br />';
+  }
+  if ($customer->state) {
+    $output .= check_plain($customer->state) .'&nbsp;&nbsp;&nbsp;';
+  }
+  if ($customer->postcode) {
+    $output .= check_plain($customer->postcode);
+  }
+  $output .= '</div>';
+
+   //Render terms etc.
+  $header = array('PO No', 'Terms', 'Due Date', 'Rep');
+  $rows = array();
+  $rows[] = array($node->po, $node->terms, $node->due_date, $node->rep);
+  //$output .= '<div class="info_pane">'. theme('table', $header, $rows, array('class' => 'info_pane')) .'</div>';
+
+  //Rendering of statement items
+  $result = db_query("SELECT nid FROM {erp_invoice} WHERE invoice_status <> 'C' AND customer_nid = %d", $customer->nid);
+
+  $header = array(array('data' => 'Invoice Id',
+                        'class' => 'invoice'),
+                  array('data' => 'Date',
+                        'class' => 'date'),
+                  array('data' => 'Title',
+                        'class' => 'title'),
+                  'Amount');
+  $total = 0;
+  $rows = array();
+
+  while ($row = db_fetch_array($result)) {
+    $out = node_load($row['nid']);
+    $rows[] = array(array('data' => $out->invoice_id,
+                          'class' => 'invoice'),
+                    array('data' => format_date($out->created, 'custom', 'd-m-Y'),
+                          'class' => 'date'),
+                    array('data' => $out->title,
+                          'class' => 'title'),
+                    erp_symbol() . erp_currency(_erp_payment_get_balance($out)));
+
+    $total += _erp_payment_get_balance($out);
+  }
+
+  $rows[] = array(NULL, NULL, NULL,
+                  array('data' => '&nbsp;',
+                        'class' => 'total-space'));
+  $rows[] = array(NULL, NULL,
+                  array('data' => 'Total outstanding:',
+                        'class' => 'total'),
+                  array('data' => erp_symbol() . erp_currency($total),
+                        'class' => 'total'));
+  $output .= '<div class="outstanding">';
+  $output .= theme('table', $header, $rows);
+  $output .= '</div>';
+
+   //Bank Details and contact details
+  $output .= '<div class="bank-details">'.
+             'Bank Account Details<br />'.
+             'Account Name: '. $store->company .'<br />'.
+             $store->bank_details .'</div>';
+
+  $output .= '<div class="contact-details">'.
+             'Phone: '. $store->phone .'<br />'.
+             'Fax: '. $store->fax .'<br />'.
+             'Email: '. $store->email .'<br />'.
+             'Web: '. $store->homepage .'</div>';
+
+  $output .= '<div class="extra-msg"><p>&nbsp;</p>'.
+             'If you have already paid any of the invoices listed, please call or email the payment details through to '. $store->email .'</div>';
+
+  return $output;
+}
+
+function erp_invoice_balances() {
+  $result = db_query("SELECT c.title, e.customer_nid, SUM(total) AS outstanding, COUNT(total) as number FROM {erp_invoice} e INNER JOIN {node} c on e.customer_nid = c.nid WHERE invoice_status <> 'C' GROUP BY customer_nid ORDER BY outstanding DESC");
+
+  while ($row = db_fetch_object($result)) {
+    $result2 = db_query("SELECT e.nid, e.invoice_id, n.created FROM {erp_invoice} e INNER JOIN {node} n ON e.nid = n.nid WHERE invoice_status <> 'C' AND customer_nid = %d", $row->customer_nid);
+
+    $invoices = '';
+    $invoices_total = 0;
+    while ($invoice = db_fetch_object($result2)) {
+      $invoice_node = node_load($invoice->nid);
+      $balance = _erp_payment_get_balance($invoice_node);
+      $invoices .= '<div style="whitespace: nowrap">'. l($invoice->invoice_id, "node/$invoice->nid") ." (". round((time() - $invoice->created)  / 86400) ." / ". erp_symbol() . erp_currency($balance) .") </div>";
+      $invoices_total += $balance;
+    }
+
+    $rows[] = array(array('data' => l($row->title, "node/$row->customer_nid"),
+                          'class' => 'erp-invoice-customer'),
+                    array('data' => $invoices,
+                          'class' => 'erp-invoice-list'),
+                    array('data' => $row->number,
+                          'class' => 'erp-invoice-count'),
+                    array('data' => erp_currency($invoices_total),
+                          'class' => 'erp-invoice-total'));
+    $total += $invoices_total;
+  }
+
+  $header = array(t('Customer'), t('Invoice (days)'), t('Count'), t('Total'));
+
+  $rows[] = array(NULL, NULL, NULL, NULL);
+  $rows[] = array(NULL, NULL, t('Total'), erp_currency($total));
+
+  $html = theme('table', $header, $rows);
+
+  return $html;
+}
+
+function erp_invoice_erp_timesheet_erp_extra_info(&$node) {
+  $output = '';
+
+  // Check for any invoices referencing this node
+  $result = db_query("SELECT nid, invoice_id FROM {erp_invoice} " .
+                     "WHERE refs = %d", $node->nid);
+
+  while ($row = db_fetch_array($result)) {
+    $invoice_link = l($row['invoice_id'], 'node/'. $row['nid']);
+    $output .= '<div class="invoice-ref">';
+    $output .= t('Invoice: %invoice', array('%invoice' => $invoice_link));
+    $output .= '</div>';
+
+  }
+
+  return $output;
+}
+
+function erp_invoice_views_api() {
+  return array('api' => 2.0);
+}
+
+/**
+ * Recurring function for invoices, creates a new invoice each run
+ *
+ * @param unknown_type $node
+ */
+function erp_invoice_recurring($node) {
+  $user = user_load(array('uid' => $node->uid));
+
+  unset($node->nid);
+  unset($node->vid);
+  unset($node->invoice_id);
+  unset($node->payment_date);
+  unset($node->printed);
+
+  $node->title = $user->name .' - '. date("d/m/Y");
+  $node->created = time();
+
+  // Now we need to loop through the entries and set them to today's date
+  for ($i = 0; $i < count($node->entries['qty']); $i++) {
+    if (isset($node->entries['completed_date'][$i]) && $node->entries['completed_date'][$i] != '') {
+      $node->entries['completed_date'][$i] = $date;
+    }
+  }
+
+  node_save($node);
+
+  // Ensure the invoice is open, as its a new one!
+  erp_open('invoice', $node->nid);
+}
+
+/**
+ * Send out statements
+ */
+function erp_invoice_cron() {
+  // There is a bug/problem with calling ob_start/ob_get_contents/ob_end_clean within a single cron run, so
+  // We have to let the processing of invoices be split across multiple cron runs, doing 1 at a time.
+  // This is horrid. Try and figure out WTF - line 614 @ erp_email.module
+  $done_one = FALSE;
+  $now = time();
+
+	$from_email = variable_get('erp_invoice_email_sender', FALSE);
+	$statement_text = variable_get('erp_invoice_statement_text', '');
+	$statement_subject = variable_get('erp_invoice_statement_subject', '');
+
+	// If the cron is not enabled, return
+	if (!variable_get('erp_invoice_cron_statements', FALSE)) {
+		return;
+	}
+
+	// Retrieve list of open invoices
+	$result = db_query("SELECT customer_nid, count(ei.nid) as invoice_count, ei.invoice_id, n.created FROM {erp_invoice} ei LEFT JOIN {node} n ON ei.nid = n.nid WHERE ei.invoice_status <> 'C' GROUP BY ei.customer_nid ORDER BY created DESC");
+
+  while ($row = db_fetch_object($result)) {
+    $customer = node_load($row->customer_nid);
+
+    // See if there is an accounts contact, or we can't continue
+    $addresses = erp_contacts_load($customer->nid, 2); // 2 = Accounts contact TODO make configurable contact types?
+    if (!is_array($addresses) || (count($addresses) == 0)) {
+    	continue;
+    }
+
+    // OK, all things ar satisfied, now we can actually do the work.
+    // If the customer has even one invoice over the terms, then they
+    // get a full statement
+
+    // Check invoice terms/age
+    $terms = erp_accounting_get_terms($customer);
+    $minutes = $terms * 86400;
+
+    // If the oldest invoice is not past terms, no need to send a statement
+    if (($now - $minutes) <= $row->created) {
+    	continue;
+    }
+
+    // Check if the customer has a specific "day" to be emailed on.
+    if ($customer->specific_day) {
+      // Check if its today
+      if (!($customer->specific_day == date("j"))) {
+        // Continue to next customer if its not
+        continue;
+      }
+
+      // Retrieve the last time we sent email to ensure its not sending multiple on one day..
+      $last_sent = db_result(db_query("SELECT last_sent FROM {erp_email_record} WHERE nid = %d AND type = '%s'", $customer->nid, 'statement'));
+      if ($last_sent) {
+        // Check last time we emailed and make sure it was long enough ago
+        $minutes = (25 * 86400) + $last_sent;
+        if (($now - $minutes) <= 0) {
+          continue;
+        }
+      }
+    }
+    elseif ($customer->reminder_days) {
+      // Retrieve the last time we sent email
+      $last_sent = db_result(db_query("SELECT last_sent FROM {erp_email_record} WHERE nid = %d AND type = '%s'", $customer->nid, 'statement'));
+      if ($last_sent) {
+        // Check last time we emailed and make sure it was long enough ago
+        $minutes = $customer->reminder_days * 86400 + $last_sent;
+        if (($now - $minutes) <= 0) {
+    	    continue;
+        }
+      }
+    }
+    else {
+      // There is nothing configured for this customer, skip them.
+      continue;
+    }
+
+    // Set the node path to the statement
+    $customer->path = 'node/'. $customer->nid .'/statement';
+
+    $email_format = erp_email_get_format($customer->nid);
+    switch ($email_format) {
+      case 1: // HTML
+        require_once(drupal_get_path('module', 'print') .'/print.pages.inc');
+
+        $html = _erp_email_print_html_controller($customer, $statement_text, FALSE);
+
+        list($headers, $body) = erp_email_build_mime_body($from_email, nl2br($statement_text) . $html, TRUE);
+        $done_one = TRUE;
+        break;
+
+      case 2: // PDF
+        require_once(drupal_get_path('module', 'print_pdf') .'/print_pdf.pages.inc');
+
+        $output = _erp_email_print_pdf_controller($customer);
+
+        list($headers, $body) = erp_email_build_mime_body($from_email, $statement_text, FALSE, $output);
+        $done_one = TRUE;
+        break;
+    }
+
+	  // send email
+    $to_addresses = implode(', ', $addresses);
+
+	  mail($to_addresses, $customer->title .' - '. $statement_subject, $body, $headers);
+
+	  db_query("DELETE FROM {erp_email_record} WHERE nid = %d AND type = '%s'", $customer->nid, 'statement');
+    db_query("INSERT INTO {erp_email_record} (nid, type, last_sent) VALUES (%d, '%s', %d)", $customer->nid, 'statement', time());
+    if ($done_one) {
+      break;
+    }
+  }
+
+  return;
+}

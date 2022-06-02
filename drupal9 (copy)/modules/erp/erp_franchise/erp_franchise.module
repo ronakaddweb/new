@@ -1,0 +1,247 @@
+<?php
+// $Id: erp_franchise.module,v 1.11.2.8 2010/02/25 06:02:27 simon Exp $
+
+/**
+ * @file
+ *
+ * Simple module to allow you to associate customers to a franchisee (drupal user).
+ *
+ */
+
+/**
+ * Franchise help fuction
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_franchise_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    // This description is shown in the listing at admin/modules.
+    return t('ERP franchise module.');
+    break;
+  }
+  return NULL;
+}
+
+/**
+ * Franchise permissions
+ *
+ * @return unknown
+ */
+function erp_franchise_perm() {
+  return array('admin franchise');
+}
+
+/**
+ * Menu details
+ *
+ */
+function erp_franchise_menu() {
+  $items['admin/erp/franchise'] = array(
+    'title' => 'Franchise',
+    'description' => 'Configure erp franchise settings',
+    'access arguments' => array('admin franchise'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_franchise_admin_settings')
+  );
+
+  $items['user/%user/erp/franchise'] = array(
+    'title' => 'Franchise details',
+    'description' => 'Provide details about the franchise',
+    'page callback' => 'erp_franchise_details',
+    'page arguments' => array(1),
+    'access arguments' => array('admin franchise'),
+    'type' => MENU_LOCAL_TASK
+  );
+
+  return $items;
+}
+
+/**
+ * Display details for a particular franchise
+ *
+ * @return unknown
+ */
+function erp_franchise_details() {
+  global $user;
+
+  $output .= '';
+
+  // Fetch details from accounts here
+  $output .= '<div class="code">';
+  $output .= t('Franchise Account Details');
+  $output .= '</div>';
+
+  // TODO
+
+  return $output;
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $name
+ * @param unknown_type $node
+ */
+function erp_franchise_set_franchisee($name, $node) {
+  if (user_access('admin franchise')) {
+    $fid = erp_franchisee_to_fid($name);
+    
+    db_query("DELETE FROM {erp_franchise} WHERE nid = '%d'", $node->nid);
+    db_query("INSERT INTO {erp_franchise} (fid, nid) VALUES (%d, %d)", $fid, $node->nid);
+  }
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $nid
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_franchise_get_franchisee(&$node) {
+  $franchise = db_fetch_object(db_query("SELECT (fid) FROM {erp_franchise} WHERE nid = '%d'", $node->nid));
+  $user = user_load(array('uid' => $franchise->fid));
+  $node->franchisee = $user->name;
+  $node->fid = $user->uid;
+  return $user->name;
+}
+
+/**
+ * Allow setting some defaults for the franchise module
+ *
+ */
+function erp_franchise_admin_settings() {
+  $form['erp_default_franchisee'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Default Franchisee'),
+    '#size' => 20,
+    '#maxlength' => 40,
+    '#default_value' => variable_get('erp_default_franchisee', ''),
+    '#autocomplete_path' => 'user/autocomplete',
+    '#description' => t('Any user with can be selected as the default franchisee for new customers. In general, the user will also have the "Staff" role.')
+  );
+
+  return system_settings_form($form);
+}
+
+function erp_franchise_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'erp_customer_node_form') {
+    $form['franchisee'] = erp_franchisee_form($form, $form_state);
+  }
+}
+
+function erp_franchise_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
+  if ($node->type == 'erp_customer') {
+    switch ($op) {
+      case 'validate':
+        erp_franchisee_validate($node);
+        break;
+      case 'update':
+      case 'insert':
+        erp_franchise_set_franchisee($node->franchisee, $node);
+        break;
+      case 'load':
+        erp_franchise_get_franchisee($node);
+    }
+  }
+}
+
+/**
+ * The franchisee part of the form which is used to enter a customer
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_franchisee_form(&$form, $form_state) {
+	if (!$form['#node']->franchisee) {
+	  if ($form['#node']->fid) {
+	    $franchisee = erp_fid_to_franchisee($node->fid);
+	  }
+	  else {
+	    $franchisee = variable_get('erp_default_franchisee', '');
+	  }
+	}
+	else {
+		$franchisee = $form['#node']->franchisee;
+	}
+
+	// Disable the selection of a new franchisee if the user doesn't have admin access
+  return array('#type' => 'textfield',
+               '#title' => t('Franchisee'),
+               '#size' => 20,
+               '#maxlength' => 40,
+	             '#default_value' => $franchisee,
+	             '#autocomplete_path' => 'user/autocomplete',
+	             '#disabled' => (user_access('admin franchise') ? FALSE : TRUE),
+	             '#weight' => -1);
+}
+
+/**
+ * Validate a franchisee as existing
+ *
+ * @param unknown_type $node
+ */
+function erp_franchisee_validate($node) {
+  if (user_access('admin franchise')) {
+    // If there was a franchisee specified
+    if (empty($node->franchisee)) {
+      form_set_error('franchisee', t('Each customer must be associated with a franchisee.'));
+    }
+    else {
+      // Try and load the franchisee from the name entered
+      $account = user_load(array('name' => $node->franchisee));
+      
+      // If the franchisee name is non existant, give an error
+      if (!$account->uid) {
+        form_set_error('franchisee', t('The franchisee %name does not exist.', array('%name' => theme('placeholder', $node->franchisee))));
+      }
+      else {
+        // Set the fid field to be the uid of the franchisee
+        $node->fid = $account->uid;
+      }
+    }
+  }
+}
+
+/**
+ * Take a franchisee (user) name and return an id
+ *
+ * @param string $name
+ * @return int $franchisee_id
+ */
+function erp_franchisee_to_fid($name) {
+  $user = user_load(array('name' => $name));
+  return $user->uid;
+}
+
+/**
+ * Take a franchisee (user) id and return a name
+ *
+ * @param int $fid
+ * @return string $username
+ */
+function erp_fid_to_franchisee($fid) {
+  $user = user_load(array('uid' => $fid));
+  return $user->name;
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $node
+ */
+function erp_franchise_erp_customer_info($node) {
+  $output = '';
+
+  if ($node->nid) {
+    $account = erp_franchise_get_franchisee($node);
+    if ($account) {
+      $output = '<div class="franchisee">';
+      $output .= t('Franchisee: ') . $account;
+      $output .= '</div>';
+    }
+  }
+  return $output;
+}

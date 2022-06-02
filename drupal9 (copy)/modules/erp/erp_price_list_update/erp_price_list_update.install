@@ -1,0 +1,55 @@
+<?php
+// $Id: erp_price_list_update.install,v 1.1.2.5 2009/12/26 00:22:22 simon Exp $
+
+/**
+ * @file
+ * Install, update and uninstall functions for the erp_price_list_update module.
+ */
+
+function erp_price_list_update_install() {
+  drupal_install_schema('erp_price_list_update');
+
+  db_query("UPDATE {system} set schema_version = 6002 WHERE name = 'erp_price_list_update'");
+}
+
+function erp_price_list_update_schema() {
+  $schema['erp_price_list_update'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'update_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'supplier_nid' => array('type' => 'int', 'not null' => TRUE, 'disp-width' => '11'),
+      'pricelist_type' => array('type' => 'char', 'length' => 1, 'not null' => FALSE, 'disp-width' => '1'),
+      'pricelist_url' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE),
+      'email_server' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'disp-width' => '40'),
+      'email_username' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'disp-width' => '20'),
+      'email_password' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'disp-width' => '20'),
+      'email_from_address' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'disp-width' => '20'),
+      'header_row' => array('type' => 'int', 'length' => 2, 'not null' => TRUE, 'disp-width' => '2'),
+      'file_type' => array('type' => 'int', 'length' => 2, 'not null' => TRUE, 'disp-width' => '2'),
+      'assignment_list' => array('type' => 'text', 'not null' => TRUE),
+    ),
+    'primary key' => array('update_id'),
+    'indexes' => array(
+      'supplier_nid' => array('supplier_nid'),
+    )
+  );
+
+  return $schema;
+}
+
+function erp_price_list_update_update_6001() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_price_list_update} CHANGE COLUMN update_id update_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_price_list_update} ADD COLUMN header_row INT(2) NOT NULL AFTER email_from_address");
+
+  return $ret;
+}
+
+function erp_price_list_update_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_price_list_update} ADD COLUMN file_type INT(2) NOT NULL AFTER header_row");
+
+  return $ret;
+}

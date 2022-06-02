@@ -1,0 +1,25 @@
+Index: views.module
+===================================================================
+RCS file: /cvs/drupal-contrib/contributions/modules/views/views.module,v
+retrieving revision 1.125
+diff -u -b -r1.125 views.module
+--- views.module	19 May 2006 02:13:10 -0000	1.125
++++ views.module	30 Jun 2006 23:37:28 -0000
+@@ -1745,8 +1745,17 @@
+       $query->ensure_table($fieldbits[0]);
+       switch ($filter['operator']) {
+         case 'contains':
++          $words = explode(' ', $filter['value']);
++          if (count($words) > 1) {
++            foreach (explode(' ', $filter['value']) as $word) {
++              $query->add_where("UPPER(%s) LIKE UPPER('%%%s%%')", 
++                $filter['field'], $word);
++            }
++          }
++          else {
+           $query->add_where("UPPER(%s) LIKE UPPER('%%%s%%')", 
+             $filter['field'], $filter['value']);
++          }
+           break;
+         case 'starts':
+           $query->add_where("UPPER(%s) LIKE UPPER('%s%%')", 

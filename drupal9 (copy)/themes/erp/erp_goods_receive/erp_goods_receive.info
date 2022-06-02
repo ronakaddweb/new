@@ -1,0 +1,17 @@
+; $Id: erp_goods_receive.info,v 1.8.2.5 2009/12/26 00:22:22 simon Exp $
+name = erp goods receive
+description = ERP goods receive
+package = "ERP"
+dependencies[] = erp
+dependencies[] = erp_item
+dependencies[] = erp_supplier
+dependencies[] = erp_customer
+dependencies[] = erp_purchase_order
+core = 6.x
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

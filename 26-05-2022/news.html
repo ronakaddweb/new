@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <h3>Top News </h3>
+    <div id="news_one">
+        
+    </div>
+
+    <script>
+      let news_data = null
+      var today = new Date();
+      var date = today.getFullYear()+'-'+(today.getMonth()+1)+'-'+today.getDate();
+
+const getNewsData = async () => {
+    
+    await fetch('https://newsapi.org/v2/everything?q=tesla&from=&date&sortBy=publishedAt&apiKey=7a4e04b646c34c1bb737763054c7b218')
+    .then(res=> res.json())
+    .then(res=>{
+      console.log(res)
+      console.log(res.articles)
+      // news_data = res.articles
+      const n1 = document.getElementById('news_one')
+    var a = "";
+    var b = res.articles.length;
+    // console.log(b);
+    for(var i=0; i<b; i++){
+    a += `<h3> ${res.articles[i].title}</h3>`+ `<img src=${res.articles[i].urlToImage} height=300 width=300/>` + "<br>";
+  }
+  n1.innerHTML =  a;
+
+})
+    .catch(err=>{
+      console.log(err)
+    })
+ 
+}
+getNewsData();
+
+
+
+
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+<?php
+// $Id: erp_customer.install,v 1.4.2.14 2010/03/09 10:21:08 simon Exp $
+
+/**
+ * @file
+ * Install, update and uninstall function for the erp_customer module.
+ */
+function erp_customer_install() {
+  drupal_install_schema('erp_customer');
+
+  // Only do updates when not a new install
+  db_query("UPDATE {system} set schema_version = 6004 WHERE name = 'erp_customer'");
+}
+
+function erp_customer_schema() {
+  $schema['erp_customer'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'customer_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'fid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'address' => array('type' => 'text', 'not null' => TRUE),
+      'suburb' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'state' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'postcode' => array('type' => 'varchar', 'length' => '12', 'not null' => TRUE, 'default' => ''),
+      'postal_address' => array('type' => 'text', 'not null' => TRUE),
+      'postal_suburb' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'postal_state' => array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''),
+      'postal_postcode' => array('type' => 'varchar', 'length' => '12', 'not null' => TRUE, 'default' => ''),
+      'phone' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'fax' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'mobile' => array('type' => 'varchar', 'length' => '20', 'not null' => TRUE, 'default' => ''),
+      'email' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'email_format' => array('type' => 'int', 'not null' => TRUE, 'default' => 2, 'disp-width' => '2'),
+      'homepage' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'documentation' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'user_list' => array('type' => 'text', 'not null' => TRUE),
+      'terms' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 7),
+      'reminder_days' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 7),
+      'specific_day' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 0),
+    ),
+    'primary key' => array('nid'),
+    'unique keys' => array(
+      'customer_id' => array('customer_id')
+    ),
+  );
+
+  $schema['erp_customer_link'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'indexes' => array(
+      'customer_nid' => array('customer_nid'),
+      'nid' => array('nid')),
+  );
+
+  return $schema;
+}
+
+function erp_customer_update_6001() {
+  $ret = array();
+
+  // Fix customer id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_customer} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_customer} DROP INDEX customer_id");
+  $ret[] = update_sql("ALTER TABLE {erp_customer} ADD UNIQUE (customer_id)");
+  $ret[] = update_sql("ALTER TABLE {erp_customer} CHANGE customer_id customer_id INT(10) NOT NULL auto_increment");
+
+  $high_customer = db_result(db_query("SELECT MAX(customer_id) FROM {erp_customer}"));
+  $ret[] = update_sql("ALTER TABLE {erp_customer} AUTO_INCREMENT = ". $high_customer++);
+
+  $ret[] = update_sql("CREATE TABLE {erp_customer_link} (
+    customer_nid INT(10) UNSIGNED NOT NULL,
+    nid INT(10) UNSIGNED NOT NULL
+  )");
+
+  // Now utilise the old og information to create customer links for book nodes
+  $result = db_query("SELECT nid FROM {node} WHERE type = 'book'");
+  while ($row = db_fetch_object($result)) {
+    $customer_nid = db_result(db_query("SELECT group_nid FROM {og_ancestry} WHERE nid = %d", $row->nid));
+    if ($customer_nid) {
+      db_query("INSERT INTO {erp_customer_link} (customer_nid, nid) VALUES (%d, %d)",
+        $customer_nid, $row->nid
+      );
+    }
+  }
+
+  return $ret;
+}
+
+function erp_customer_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_customer} CHANGE COLUMN postcode postcode VARCHAR(12)");
+
+  return $ret;
+}
+
+function erp_customer_update_6003() {
+	$ret = array();
+
+	db_add_field($ret, 'erp_customer', 'postal_address', array('type' => 'text', 'not null' => TRUE));
+	db_add_field($ret, 'erp_customer', 'postal_suburb', array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''));
+  db_add_field($ret, 'erp_customer', 'postal_state', array('type' => 'varchar', 'length' => '10', 'not null' => TRUE, 'default' => ''));
+  db_add_field($ret, 'erp_customer', 'postal_postcode', array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''));
+
+  return $ret;
+}
+
+function erp_customer_update_6004() {
+	$ret = array();
+
+  // Context customer block is no longer needed
+  $ret[] = update_sql("DELETE FROM {context} WHERE namespace = 'erp' AND attribute = 'tabs' and value = 'customer_details'");
+
+  // Update all terms to 7 days if they were set before
+  $ret[] = update_sql("UPDATE {erp_customer} SET terms = 7 WHERE terms <> ''");
+
+	// Change fields
+	db_change_field($ret, 'erp_customer', 'terms', 'terms', array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 7));
+	db_add_field($ret, 'erp_customer', 'reminder_days', array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 7));
+	db_add_field($ret, 'erp_customer', 'specific_day', array('type' => 'int', 'unsigned' => TRUE, 'not null' => FALSE, 'default' => 0));
+
+	return $ret;
+}

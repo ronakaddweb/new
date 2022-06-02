@@ -1,0 +1,39 @@
+<?php
+
+function erp_cart_install() {
+  drupal_install_schema('erp_cart');
+}
+
+function erp_cart_schema() {
+  $schema['erp_cart'] = array(
+    'fields' => array(
+      'uid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'iid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'description' => array('type' => 'varchar', 'length' => '255', 'not null' => TRUE, 'default' => ''),
+      'qty' => array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'disp-width' => '5'),
+      'buy_price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'sell_price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'created' => array('type' => 'int', 'not null' => TRUE, 'default' => 0, 'disp-width' => '11'),
+      'extra_text' => array('type' => 'text', 'not null' => FALSE),
+      'extra' => array('type' => 'text', 'not null' => FALSE),
+      'serial' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
+    'indexes' => array(
+      'cid' => array('customer_nid'),
+      'uid' => array('uid')),
+  );
+
+  return $schema;
+}
+
+function erp_cart_update_6001() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_cart} CHANGE COLUMN customer_id customer_nid int(10) NOT NULL");
+  $ret[] = update_sql("ALTER TABLE {erp_cart} CHANGE COLUMN buy_price buy_price FLOAT(20,5) NOT NULL DEFAULT 0");
+  $ret[] = update_sql("ALTER TABLE {erp_cart} CHANGE COLUMN sell_price sell_price FLOAT(20,5) NOT NULL DEFAULT 0");
+  
+  $ret[] = update_sql("ALTER TABLE {erp_cart} CHANGE COLUMN serials serial VARCHAR(255) NOT NULL");
+  return $ret;
+}
+

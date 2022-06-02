@@ -1,0 +1,649 @@
+<?php
+// $id$
+
+/**
+ *
+ * payment module
+ */
+
+/**
+ * Help function for payment module
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_payment_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP payment module.');
+      break;
+    case 'node/add#erp_payment':
+      // This description shows up when users click "create content."
+      return t('ERP payment.');
+      break;
+  }
+}
+
+/**
+ * payment node name
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_payment_node_name($node) {
+  return t('erp payment');
+}
+
+/**
+ * Implementation of erp_payment_node_info
+ *
+ * @return array of information
+ */
+function erp_payment_node_info() {
+  return array('erp_payment' =>
+               array('name' => t('erp payment'),
+                     'module' => 'erp_payment',
+                     'description' => t('ERP Payment module'),
+                     'title_label' => t('Payment entered by'),
+                     'has_body' => TRUE));
+}
+
+/**
+ * Implementation of hook_link().
+ *
+ * This is implemented so that an edit link is displayed for users who have
+ * the rights to edit a node.
+ */
+function erp_payment_link($type, $node = 0, $main) {
+  global $user;
+
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_payment') {
+    // Don't display a redundant edit link if they are node administrators.
+    if (erp_payment_access('update', $node, $user) && !user_access('administer nodes')) {
+      $links['erp_payment_link'] =
+        array('title' => t('edit this payment'),
+              'href' => 'node/'. $node->nid .'/edit');
+    }
+
+    $links = array_merge($links, module_invoke_all('erp_payment_link', $node));
+  }
+
+  return $links;
+}
+
+function erp_payment_erp_customer_link($node) {
+  if (user_access('receive payment')) {
+    $links['erp_payment_erp_customer_link'] =
+      array('title' => t('receive payment'),
+            'href' => 'node/add/erp-payment',
+            'attributes' => array('title' => t('Create a payment for this customer')),
+            'query' => 'customer='. $node->nid);
+    return $links;
+  }
+}
+
+
+function erp_payment_erp_invoice_link($node) {
+  // If the invoice isn't already closed
+  if ($node->invoice_status != 'C' && user_access('receive payment')) {
+    $links['erp_payment_invoice_link'] =
+      array('title' => t('receive payment'),
+            'href' => 'node/add/erp-payment',
+            'attributes' => array('title' => t('Create a payment for this customer')),
+            'query' => 'customer='. $node->customer_nid);
+
+    return $links;
+  }
+}
+
+
+/**
+ * Return whether the user has access to a function or not.
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_payment_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('receive payment', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit all payments', $account)) {
+        return TRUE;
+      }
+
+      if (user_access('edit payment', $account) && ($account->uid == $node->uid)) {
+        return TRUE;
+      }
+      break;
+
+    case 'view':
+      if (user_access('view payments', $account)) {
+        return TRUE;
+      }
+      break;
+  }
+}
+
+/**
+ * payment permissions
+ *
+ * @return unknown
+ */
+function erp_payment_perm() {
+  return array(
+    'receive payment',
+    'list payments',
+    'edit payment',
+    'edit all payments',
+    'admin payment',
+    'view payments'
+  );
+}
+
+/**
+ * payment menu functions
+ *
+ * @param unknown_type $may_cache
+ * @return unknown
+ */
+function erp_payment_menu() {
+  $items['admin/erp/payment'] = array(
+    'title' => 'Payment',
+    'description' => 'Configure erp payment settings',
+    'access arguments' => array('admin payment'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_payment_admin_settings')
+  );
+
+  return $items;
+}
+
+function erp_payment_erp_quickjump_p($number) {
+  $nid = erp_id_to_nid('payment', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Payment not found');
+    return '';
+  }
+}
+
+function erp_payment_erp_quickjump_info() {
+  return array('erp_payment' => t('p-xxx - load a payment using its number.'));
+}
+
+/**
+ * Allow the user to change payment settings.
+ *
+ */
+function erp_payment_admin_settings() {
+  $form = array();
+
+  drupal_set_title(t('Payment settings'));
+
+  $form += erp_set_next_id_form('erp_payment', 'Payment');
+
+  // Need to be able to edit the payment types here.
+  return system_settings_form($form);
+}
+
+function erp_payment_validate($node, $form) {
+
+}
+
+function erp_payment_erp_invoice_info($node) {
+  // Figure out if there have been any payments
+  $result = db_query("SELECT ep.payment_id FROM {erp_payment_data} epd LEFT JOIN {erp_payment} ep ON epd.nid = ep.nid WHERE invoice_nid = '%d'", $node->nid);
+  while ($row = db_fetch_array($result)) {
+    $payment_id = $row['payment_id'];
+    $payments[] = l($payment_id, 'node/'. erp_id_to_nid('payment', $payment_id));
+  }
+
+  // Display them
+  if (count($payments)) {
+    $output .= '<div class=erp-payment>';
+    $output .= t('Payments: ') . implode(', ', $payments);
+    $output .= '</div>';
+  }
+
+  $output .= '<div class="closed-text">';
+  $output .= t('Closed/Paid: ') . ($node->invoice_status ? t('Yes') : t('No'));
+  $output .= '</div>';
+
+  return $output;
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * Now it's time to describe the form for collecting the information
+ * specific to this node type. This hook requires us to return some HTML
+ * that will be later placed inside the form.
+ */
+function erp_payment_form(&$node, $form_state) {
+  global $user;
+
+  $type = node_get_types('type', $node);
+
+  erp_set_customer($node);
+
+  // Default to the current user.
+  if (!$node->owner) {
+    $node->owner = $user->name;
+  }
+
+  if (!$node->title) {
+    $node->title = $user->name . ' - ' . date("d/m/Y");
+  }
+
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => check_plain($type->title_label),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['payment_details'] =
+    array('#prefix' => '<div class="payment-details">',
+          '#type' => 'fieldset',
+          '#title' => 'payment details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->payment_id) {
+    $form['payment_details']['payment_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'payment_id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->payment_id);
+  }
+
+  $form['payment_details']['customer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Customer'),
+          '#default_value' => $node->customer,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['customer_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->customer_nid);
+
+  $form['entries'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Invoices paid/to pay'),
+          '#tree' => TRUE,
+          '#theme' => 'erp_payment_entries');
+
+  $line = 1;
+
+  // If its not a new node (payment), display a list of existing payments
+  if ($node->nid) {
+    $sql = "SELECT * FROM {erp_payment_data} epd WHERE epd.nid = %d";
+    $result = db_query($sql, $node->nid);
+    while ($payment = db_fetch_object($result)) {
+      $invoice = node_load($payment->invoice_nid);
+      $nodes[$line] = '';
+      //$selected[] = $line;
+      $form['entries']['nid'][$line] = array('#type' => 'hidden', '#value' => $invoice->nid);
+      $form['entries']['invoice_id'][$line] = array('#value' => $invoice->invoice_id);
+      $form['entries']['invoice_title'][$line] = array('#value' => $invoice->title);
+      $form['entries']['invoice_total'][$line] =
+        array('#value' => erp_symbol() . erp_currency($invoice->total));
+
+      $form['entries']['invoice_outstanding'][$line] =
+        array('#value' => erp_symbol() . erp_currency(_erp_payment_get_balance($invoice)));
+
+      $form['entries']['invoice_pmt_amount'][$line] =
+        array('#type' => 'textfield',
+              '#size' => '12',
+              '#maxlength' => '12',
+              '#default_value' => erp_currency($payment->payment_amount));
+
+      $form['entries']['invoice_pmt_type'][$line] =
+        array('#type' => 'select',
+              '#options' => erp_payment_type_list(),
+              '#default_value' => $payment->payment_type);
+
+      $form['entries']['invoice_pmt_date'][$line] =
+        array('#type' => 'date_popup',
+              '#size' => '10',
+              '#date_format' => 'Y-m-d',
+              '#default_value' => date_convert($payment->payment_date, DATE_UNIX, DATE_DATETIME));
+
+      $line++;
+    }
+  }
+
+  // Display a list of outstanding amounts for the customer.
+  $sql = "SELECT * FROM {node} n INNER JOIN {erp_invoice} i ON i.nid = n.nid WHERE i.invoice_status <> 'C' AND i.customer_nid = %d";
+  $result = db_query($sql, $node->customer_nid);
+
+  while ($invoice = db_fetch_object($result)) {
+    $nodes[$line] = '';
+    $form['entries']['nid'][$line] = array('#type' => 'hidden', '#value' => $invoice->nid);
+    $form['entries']['invoice_id'][$line] = array('#value' => $invoice->invoice_id);
+    $form['entries']['invoice_title'][$line] = array('#value' => $invoice->title);
+    $form['entries']['invoice_total'][$line] = array('#value' => erp_symbol() . erp_currency($invoice->total));
+
+    $form['entries']['invoice_outstanding'][$line] =
+      array('#value' => erp_symbol() . erp_currency(_erp_payment_get_balance($invoice)));
+
+    $form['entries']['invoice_pmt_amount'][$line] =
+      array('#type' => 'textfield',
+            '#size' => '12',
+            '#maxlength' => '12',
+            '#default_value' => '');
+
+    $form['entries']['invoice_pmt_type'][$line] =
+      array('#type' => 'select',
+            '#options' => erp_payment_type_list());
+
+    $form['entries']['invoice_pmt_date'][$line] =
+      array('#type' => 'date_popup',
+            '#size' => '10',
+            '#default_value' => date('Y-m-d'),
+            '#date_format' => 'Y-m-d');
+
+    $line++;
+  }
+
+  $form['entries']['nodes'] = array(
+    '#type' => 'value',
+    '#value' => $nodes,
+  );
+
+  return $form;
+}
+
+function erp_payment_theme() {
+  return array(
+    'erp_payment_info' => array(
+      'arguments' => array('node' => NULL),
+    ),
+    'erp_payment_entries' => array(
+      'arguments' => array('form' => NULL),
+    ),
+  );
+}
+
+function theme_erp_payment_entries($form) {
+  $header = array(t('invoice id'), t('Title'), t('Total'), t('Outstanding'), t('Payment'), t('Type'), t('Date'));
+
+  foreach (element_children($form['nodes']['#value']) as $key) {
+    $row = array();
+    $row[] = drupal_render($form['invoice_id'][$key]);
+    $row[] = drupal_render($form['invoice_title'][$key]);
+    $row[] = drupal_render($form['invoice_total'][$key]);
+    $row[] = drupal_render($form['invoice_outstanding'][$key]);
+    $row[] = drupal_render($form['invoice_pmt_amount'][$key]);
+    $row[] = drupal_render($form['invoice_pmt_type'][$key]);
+    $row[] = drupal_render($form['invoice_pmt_date'][$key]);
+    $rows[] = $row;
+  }
+
+  $output .= theme('table', $header, $rows);
+
+  $output .= drupal_render($form);
+
+  return $output;
+}
+
+
+function erp_payment_type_list() {
+  $sql = "SELECT * FROM {erp_payment_types}";
+  $result = db_query($sql);
+  while ($type = db_fetch_array($result)) {
+    $payment_type_list[$type['type']] = $type['description'];
+  }
+  return $payment_type_list;
+}
+
+function erp_payment_type_desc($code) {
+  $sql = "SELECT * FROM {erp_payment_types} WHERE type = %d";
+
+  $result = db_query($sql, $code);
+  if ($payment_type = db_fetch_array($result)) {
+    return $payment_type['description'];
+  }
+  else {
+    return '';
+  }
+}
+
+function erp_payment_insert($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // Build a total
+  foreach ($node->entries['invoice_pmt_amount'] as $key => $value) {
+    $total += $value;
+  }
+  $node->total = $total;
+
+  drupal_write_record('erp_payment', $node);
+
+  // insert data into invoice_data table
+  _insert_erp_payment_data($node);
+}
+
+function erp_payment_update($node) {
+  // Invoke modules that do accounting,
+  module_invoke_all('erp_payment_delete', $node);
+
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // Build a total
+  foreach ($node->entries['invoice_pmt_amount'] as $key => $value) {
+    $total += $value;
+  }
+  $node->total = $total;
+
+  // Cycle through all invoies paid with this payment, and mark them as open
+  $result = db_query("SELECT * FROM {erp_payment_data} WHERE nid = %d", $node->nid);
+  while ($payment = db_fetch_object($result)) {
+    erp_open('invoice', $payment->invoice_nid);
+  }
+
+  drupal_write_record('erp_payment', $node, array('payment_id'));
+
+  // insert data into payment_data table
+  _insert_erp_payment_data($node);
+}
+
+function _insert_erp_payment_data($node) {
+  // Need to handle payment matching to selected invoice(s)
+  // Cases:
+  // 1 - One outstanding invoice, paid less than full amount - don't close
+  // 2 - Paid all selected invoices, paid all - close invoice(s)
+  // 3 - One outstanding invoice, paid too much - close invoice & credit account
+  // 4 - More than one outstanding invoice, paid less than full amount
+  //      - Credit oldest selected invoice(s)? - close paid, credit remaining
+  // 5 - Invoice total is not the amount owing, some has been paid.
+  //      Need to check each invoice for outstanding amount, not just total.
+
+  // Clear out old entries.
+  db_query("DELETE FROM {erp_payment_data} WHERE nid = %d", $node->nid);
+
+  // Insert new entries
+  if (is_array($node->entries)) {
+
+    foreach ($node->entries['nodes'] as $key => $value) {
+      if (is_numeric(trim($node->entries['invoice_pmt_amount'][$key])) && round($node->entries['invoice_pmt_amount'][$key], 2) != 0.00) {
+        $invoice = node_load($node->entries['nid'][$key]);
+        erp_open('invoice', $invoice->nid);
+
+        $payment_amount = $node->entries['invoice_pmt_amount'][$key];
+        $payment_type = $node->entries['invoice_pmt_type'][$key];
+        $payment_date = $node->entries['invoice_pmt_date'][$key];
+
+        // Save each row
+        $line = array(
+          'nid' => $node->nid,
+          'line' => $key,
+          'invoice_nid' => $invoice->nid,
+          'payment_amount' => $payment_amount,
+          'total' => $payment_amount,
+          'type' => 'erp_payment',
+          'payment_type' => $payment_type,
+          'payment_date' => date_convert($payment_date, DATE_DATETIME, DATE_UNIX),
+        );
+
+        drupal_write_record('erp_payment_data', $line);
+
+        if (_erp_payment_get_balance($invoice) <= 0) {
+          erp_close('invoice', $invoice->nid);
+        }
+
+        // Invoke modules that do accounting
+        module_invoke_all('erp_payment_save', $line);
+      }
+    }
+
+    // TODO: Perhaps we should take the total of the payments for the erp_payment_save? hmmm.
+
+    // Handle credit (when payment is greater than total of selected invoices.)
+    // i.e. in this case payment_amount is set to unallocated payment amount
+    //if ($payment_amount > 0) {
+    // TODO: handle credit
+    //}
+  }
+}
+
+function erp_payment_delete($node) {
+  db_query('DELETE FROM {erp_payment} WHERE nid = %d', $node->nid);
+
+  // Cycle through all invoies paid with this payment, and mark them as open
+  $result = db_query("SELECT * FROM {erp_payment_data} WHERE nid = %d", $node->nid);
+  while ($payment = db_fetch_object($result)) {
+    erp_open('invoice', $payment->invoice_nid);
+  }
+
+  db_query('DELETE FROM {erp_payment_data} WHERE nid = %d', $node->nid);
+
+  module_invoke_all('erp_payment_delete', $node);
+}
+
+function erp_payment_load($node) {
+  $additions = db_fetch_object(db_query("SELECT * FROM {erp_payment} WHERE nid = %d", $node->nid));
+  $additions->invoices = array();
+
+  $result = db_query("SELECT * FROM {erp_payment_data} WHERE nid = %d ORDER BY line ASC", $node->nid);
+  while ($payment = db_fetch_object($result)) {
+    array_push($additions->invoices, (array)$payment);
+  }
+  return $additions;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_payment_view(&$node, $teaser, $page) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_payment_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_payment_info($node) {
+  $output = '<div class="payment-info">';
+
+  $output .= '<div class="payment_id">';
+  $output .= t('payment id: ') . $node->payment_id;
+  $output .= '</div>';
+
+  $output .= implode(module_invoke_all('erp_extra_info', $node));
+
+  $header = array(t('Invoice'),
+                  t('Date Received'),
+                  t('Title'),
+                  t('Type'),
+                  t('Amount'));
+  $rows = array();
+  $total_payment = 0;
+
+  $sql = "SELECT * FROM {node} n INNER JOIN {erp_payment} ep ON ep.nid = n.nid INNER JOIN {erp_payment_data} epd ON ep.nid = epd.nid WHERE ep.nid = %d";
+  $result = db_query($sql, $node->nid);
+  // TODO: This needs to be finished - $payment_list = erp_payment_list($node->payment_id);
+  while ($payment = db_fetch_object($result)) {
+    $rows[] = array(l(erp_nid_to_id('invoice', $payment->invoice_nid), 'node/'. $payment->invoice_nid),
+                    date_convert($payment->payment_date, DATE_UNIX, DATE_DATETIME),
+                    $payment->title,
+                    erp_payment_type_desc($payment->payment_type),
+                    sprintf("%12.2f", $payment->payment_amount));
+
+    $total_payment += $payment->payment_amount;
+  }
+
+  $rows[] = array(NULL, NULL, NULL, "Total: ", erp_currency($total_payment));
+
+  $output .= theme('table', $header, $rows);
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+function erp_payment_list($payment) {
+  $sql = "SELECT * FROM {node} n INNER JOIN {erp_payment} ep ON ep.nid = n.nid INNER JOIN {erp_payment_data} epd ON ep.payment_id = epd.payment_id WHERE ep.payment_id = %d";
+  $result = db_query($sql, $payment);
+  while ($payment = db_fetch_object($result)) {
+    $payments[] = $payment;
+  }
+
+  return $payments;
+}
+
+
+/**
+ *  A function to retrieve the outstanding amount for an invoice (id)
+ */
+function _erp_payment_get_balance($node) {
+  if ($node->type == 'erp_invoice') {
+    $sql = "SELECT SUM(payment_amount) as payment FROM {erp_payment_data} epd WHERE epd.invoice_nid = %d";
+    $paid = db_result(db_query($sql, $node->nid));
+
+    // fix payment matching bug (floating point precision issue)
+    // TODO Better way?
+    return round($node->total, 2) - round($paid, 2);
+  }
+
+  return 0;
+}
+
+function erp_payment_views_api() {
+  return array('api' => 2.0);
+}

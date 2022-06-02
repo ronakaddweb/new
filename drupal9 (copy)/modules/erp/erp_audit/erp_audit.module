@@ -1,0 +1,94 @@
+<?php
+
+/**
+ * Provide help links
+ */
+function erp_audit_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    return t('ERP audit module.');
+    break;
+  case 'node/add#erp_audit':
+    return t('ERP audit.');
+    break;
+  }
+}
+
+/**
+ * Implementation of hook_name().
+ *
+ * Provide the node name hook.
+ */
+function erp_audit_node_name($node) {
+  return t('erp audit');
+}
+
+/**
+ * Setup menus
+ */
+function erp_audit_menu() {
+  $items['audit/import'] = array(
+    'title' => 'audit import',
+    'page callback' => 'audit_import',
+    'access arguments' => array('create audit')
+  );
+
+  return $items;
+}
+
+function erp_audit_access($op, $node, $account) {
+  if ($op == 'create') {
+    return user_access('create audit', $account);
+  }
+}
+
+function erp_audit_node_info() {
+  return array('erp_audit' =>
+               array('name' => t('erp audit'),
+                     'module' => 'erp_audit',
+                     'description' => t('ERP Audit module'),
+                     'title_label' => t('Audit'),
+                     'has_body' => TRUE));
+}
+
+function erp_audit_perm() {
+  return array('create audit');
+}
+
+function erp_audit_import($out = 'html') {
+  global $user;
+
+  // TODO - should be configurable
+  $handle = fopen('/projects/shop/PC_Audit.csv', 'r');
+
+  while (($data = fgetcsv($handle, 1000, ',')) != FALSE) {
+    $temp = csvdate($data[0]);
+    //echo "Temp: $temp\n";
+    $data[0] = $temp;
+    if (stristr($data[30], 'XP')) {
+      $data[30] = 'Windows XP';
+    }
+    elseif (stristr($data[30], '2000')) {
+      $data[30] = 'Windows 2000';
+    }
+    elseif (stristr($data[30], '98')) {
+      $data[30] = 'Windows 98SE';
+    }
+    elseif (stristr($data[30], 'ME')) {
+      $data[30] = 'Windows ME';
+    }
+    else {
+      echo $data[30] ." - Unknown, rejected\n";
+      continue;
+    }
+    $result = db_query("INSERT INTO {erp_audit} (audit_date, computer_name, main_user, location, branch, cpu, ram, hdd, video, pc_label, ip_address, subnet_mask, gateway, dns1, dns2, workgroup, logon_password, email, email_account, email_password, mazda_email, mazda_email_account, mazda_email_password, other_email, other_email_settings, proxy, reynolds, reynolds_sw, internet_access, mail_access, operating_system, operating_system_license, operating_system_key, antivirus, antivirus_version, antivirus_registration, antivirus_expiry, periphals, software, network_data_point, reynolds_data_point, telephone_data_point, other_data_point) VALUES ('%s', '%s', '%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')", $data[0], $data[1], $data[2], $data[3], $data[4], $data[5], $data[6], $data[7], $data[8], $data[9], $data[10], $data[11], $data[12], $data[13], $data[14], $data[15], $data[16], $data[17], $data[18], $data[19], $data[20], $data[21], $data[22], $data[23], $data[24], $data[25], $data[26], $data[27], $data[28], $data[29], $data[30], $data[31], $data[32], $data[33], $data[34], $data[35], $data[36], $data[37], $data[38], $data[39], $data[40], $data[41], $data[42], $data[43]);
+    if (mysql_error()) {
+      echo mysql_errno($result) . ": " . mysql_error($result) . "\n";
+    }
+  }
+}
+
+function csvdate($date) {
+  ereg("([0-9]+)/([0-9]+)/([0-9]+)", $date, $new);
+  return "$new[3]-$new[2]-$new[1]";
+}

@@ -1,0 +1,487 @@
+<?php
+// $Id: erp_contact.module,v 1.19.2.19 2010/04/06 10:23:01 simon Exp $
+
+/**
+ * @file
+ *
+ * Contact module
+ *
+ */
+
+/**
+ * Implementation of hook_help().
+ *
+ * Throughout Drupal, hook_help() is used to display help text at the top of
+ * pages. Some other parts of Drupal pages get explanatory text from these hooks
+ * as well. We use it here to provide a description of the module on the
+ * module administration page.
+ */
+function erp_contact_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP contacts module.');
+      break;
+  }
+}
+
+function erp_contact_perm() {
+  return array('erp contact save', 'erp contact list', 'erp contact edit', 'erp contact remove');
+}
+
+function erp_contact_menu() {
+  // Provide a callback for Hud lite/voip
+  $items['erp_contact/findbynumber'] = array(
+    'access arguments' => array('erp contact list'),
+    'page callback' => 'erp_contact_number_find',
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp_contact/findbynumberraw/%'] = array(
+    'access arguments' => array('erp contact list'),
+    'page callback' => 'erp_contact_number_find_raw',
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp_contact/add'] = array(
+    'access arguments' => array('erp contact edit'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_contact_add_form', 2),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp_contact/edit/%'] = array(
+    'access arguments' => array('erp contact edit'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_contact_edit_form', 2),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp_contact/remove/%'] = array(
+    'access arguments' => array('erp contact remove'),
+    'page callback' => 'erp_contact_remove',
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK
+  );
+
+  return $items;
+}
+
+function erp_contact_edit_form(&$form_state, $nid) {
+  $result = db_query("SELECT * from {erp_contact} WHERE contact_id = %d", $nid);
+
+  $contact = db_fetch_array($result);
+
+  if ($contact > 0) {
+    $form = erp_contact_edit_common_form($contact);
+
+    $form['erp_contact_details']['contact_id'] = array(
+      '#type' => 'hidden',
+      '#default_value' => $contact['contact_id']
+    );
+
+    $form['erp_contact_details']['nid'] = array(
+      '#type' => 'hidden',
+      '#default_value' => $contact['nid']
+    );
+
+    $form['erp_contact_details']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Save')
+    );
+
+    return $form;
+  }
+  else {
+    // Set error message
+    drupal_set_message(t('Contact not found'));
+  }
+}
+
+function erp_contact_add_form($form_state, $nid) {
+  $form = erp_contact_edit_common_form();
+
+  $form['erp_contact_details']['nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $nid);
+
+  return $form;
+}
+
+function erp_contact_add_form_submit($form, $form_state) {
+  $edit = $form_state['values']['erp_contact_details'];
+  drupal_write_record('erp_contact', $edit);
+
+  // Clear out old entries
+  db_query("DELETE FROM {erp_contact_types} WHERE contact_id = %d", $edit['contact_id']);
+
+  // Save new values
+  foreach ($edit['type'] as $type => $selected) {
+  	if ($selected) {
+  		$record = array('contact_id' => $edit['contact_id'], 'type' => $type);
+  	  drupal_write_record('erp_contact_types', $record);
+  	}
+  }
+
+  drupal_set_message(t('Contact added'));
+}
+
+function erp_contact_edit_form_submit($form, $form_state) {
+  $edit = $form_state['values']['erp_contact_details'];
+  drupal_write_record('erp_contact', $edit, array('contact_id'));
+
+  // Clear otu old entries
+  db_query("DELETE FROM {erp_contact_types} WHERE contact_id = %d", $edit['contact_id']);
+
+  // Save new values
+  foreach ($edit['type'] as $type => $selected) {
+    if ($selected) {
+    	$record = array('contact_id' => $edit['contact_id'], 'type' => $type);
+      drupal_write_record('erp_contact_types', $record);
+    }
+  }
+
+  drupal_set_message(t('Contact saved'));
+}
+
+function erp_contact_remove($contact_id) {
+  if ($contact_id) {
+    db_query("DELETE FROM {erp_contact} WHERE contact_id = %d", $contact_id);
+
+    // Return to source page
+    drupal_set_message(t('Contact Removed'));
+  }
+  drupal_goto();
+}
+
+function erp_contact_edit_common_form($contact = array()) {
+  $form = array();
+
+  $form['erp_contact_details'] = array(
+    '#prefix' => '<div class="contact-details">',
+    '#type' => 'fieldset',
+    '#title' => 'contact details',
+    '#collapsible' => TRUE,
+    '#tree' => TRUE,
+    '#suffix' => '</div>'
+  );
+
+  $form['erp_contact_details']['name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Name'),
+    '#size' => 25,
+    '#maxlength' => 128,
+    '#default_value' => $contact['name']
+  );
+
+  $form['erp_contact_details']['phone'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Phone'),
+    '#size' => 10,
+    '#maxlength' => 20,
+    '#default_value' => $contact['phone']
+  );
+
+  $form['erp_contact_details']['fax'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Fax'),
+    '#size' => 10,
+    '#maxlength' => 20,
+    '#default_value' => $contact['fax']
+  );
+
+  $form['erp_contact_details']['mobile'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Mobile'),
+    '#size' => 10,
+    '#maxlength' => 20,
+    '#default_value' => $contact['mobile']
+  );
+
+  $form['erp_contact_details']['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+    '#size' => 15,
+    '#maxlength' => 128,
+    '#default_value' => $contact['email']
+  );
+
+  $types = array();
+  $result = db_query('SELECT type from {erp_contact_types} WHERE contact_id = %d', $contact['contact_id']);
+  while ($row = db_fetch_array($result)) {
+    $types[$row['type']] = $row['type'];
+  }
+  $form['erp_contact_details']['type'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Contact type'),
+    '#type' => 'select',
+    '#multiple' => TRUE,
+    '#options' => erp_contact_type(),
+    '#default_value' => $types,
+  );
+
+  if (!$contact['contact_id']) {
+    $form['erp_contact_details']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Add')
+    );
+  }
+
+  return $form;
+}
+
+function erp_contact_type($type = NULL) {
+	// TODO Make configurable?
+	$types = array(
+    '1' => t('General contact'),
+    '2' => t('Accounts contact'),
+    '3' => t('Main contact'),
+  );
+
+  if ($type) {
+  	return $types[$type];
+  }
+  else {
+  	return $types;
+  }
+}
+
+function erp_contact_types_list($contact_id) {
+	$types = array();
+
+	$result = db_query('SELECT type FROM {erp_contact_types} WHERE contact_id = %d', $contact_id);
+	while ($row = db_fetch_array($result)) {
+		$types[] = erp_contact_type($row['type']);
+	}
+	$joined_types = implode(',<br />', $types);
+
+	return $joined_types;
+}
+
+function erp_contact_get_bytype($customer_nid, $type, $field = 'email') {
+  $contacts = array();
+
+  $result = db_query('SELECT ec.* FROM {erp_contact} ec LEFT JOIN {erp_contact_types} ect ON ec.contact_id = ect.contact_id WHERE ec.nid = %d AND ect.type = %d', $customer_nid, $type);
+  while ($row = db_fetch_array($result)) {
+    $contacts[] = $row[$field];
+  }
+
+  if (count($contacts)) {
+    if ($field == 'email') {
+      return implode(',', $contacts);
+    }
+    else {
+      return $contacts;
+    }
+  }
+}
+
+function erp_contact_erp_customer_info($node) {
+	if (user_access('erp contact list')) {
+	  $contact_list = erp_contact_list($node->nid);
+
+	  $fieldset = array(
+	    '#title' => 'Contacts',
+	    '#collapsible' => TRUE,
+	    '#collapsed' => TRUE,
+	    '#value' => $contact_list);
+	  return theme('fieldset', $fieldset);
+	}
+}
+
+function erp_contact_erp_supplier_info($node) {
+  if (user_access('erp contact list')) {
+	  $contact_list = erp_contact_list($node->nid);
+
+	  $fieldset = array(
+	    '#title' => 'Contacts',
+	    '#collapsible' => TRUE,
+	    '#collapsed' => TRUE,
+	    '#value' => $contact_list);
+    return theme('fieldset', $fieldset);
+  }
+}
+
+function erp_contact_list($nid) {
+  $header = array(t('Name'), t('Phone'), t('Fax'), t('Mobile'), t('Email'), t('Type'));
+  if (user_access('erp contact edit')) {
+    $header[] = array('data' => t('Ops'), 'colspan' => 2);
+  }
+  $rows = array();
+
+  $result = db_query("SELECT * FROM {erp_contact} WHERE nid = %d", $nid);
+  while ($row = db_fetch_array($result)) {
+    $contact = array(
+      $row['name'], $row['phone'], $row['fax'], $row['mobile'],
+      ($row['email'] ? l($row['email'], 'mailto:'. $row['email']) : ''),
+      erp_contact_types_list($row['contact_id']),
+    );
+    if (user_access('erp contact edit')) {
+      $contact[] = l(t('edit'), 'erp_contact/edit/'. $row['contact_id'], array('query' => 'destination=node/'. $nid)) .'&nbsp;';
+      $contact[] = l(t('remove'), 'erp_contact/remove/'. $row['contact_id'], array('query' => 'destination=node/'. $nid));
+    }
+    $rows[] = $contact;
+  }
+
+  $output = theme('table', $header, $rows);
+
+  if (user_access("erp contact edit")) {
+    $output .= l(t('add'), 'erp_contact/add/'. $nid, array('query' => 'destination=node/'. $nid));
+  }
+
+  return $output;
+}
+
+function erp_contacts_load($nid, $type = NULL) {
+  $contacts = array();
+	if (isset($type)) {
+		$result = db_query('SELECT * FROM {erp_contact} ec INNER JOIN {erp_contact_types} ect ON ec.contact_id = ect.contact_id WHERE nid = %d AND ect.type = %d', $nid, $type);
+    while ($row = db_fetch_array($result)) {
+      $contacts[] = $row['email'];
+    }
+	}
+	else {
+    $result = db_query("SELECT * FROM {erp_contact} WHERE nid = %d", $nid);
+	  while ($row = db_fetch_array($result)) {
+	    $contacts[] = $row;
+	  }
+	}
+  return $contacts;
+}
+
+function erp_contact_find_customer_by_email($address) {
+  $nid = db_result(db_query("SELECT nid FROM {erp_contact} WHERE email = '%s'", $address));
+
+  return $nid;
+}
+
+function erp_contact_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
+  $erp_contact_types = array('erp_customer', 'erp_supplier');
+
+  if (in_array($node->type, $erp_contact_types)) {
+    switch ($op) {
+      case 'presave':
+        $count = db_result(db_query("SELECT count(nid) FROM {erp_contact} WHERE nid = %d", $node->nid));
+        if ($count == 0) {
+
+          db_query("INSERT INTO {erp_contact} (contact_id, nid, name, phone, fax, mobile, email) VALUES (NULL, %d, '%s', '%s', '%s', '%s', '%s')",
+            $node->nid,
+            $node->title,
+            $node->phone,
+            $node->fax,
+            $node->mobile,
+            $node->email);
+        }
+        break;
+
+      case 'delete':
+        db_query("DELETE FROM {erp_contact} WHERE nid = %d", $node->nid);
+        break;
+    }
+  }
+}
+
+// Used in conjunction with Hudlite to load customer information based on their incoming
+// phone number.
+// Set hud lite to http://yourserveradndpath/erp_contact/findbynumber/%%caller_number%%
+function erp_contact_number_find($number, $outputhtml = TRUE) {
+  $number = check_plain($number);
+
+  // Dont try and lookup unknowns
+  if ((strtolower($number) == 'unknown') || ($number == 'anonymous')) {
+    if (!$outputhtml) {
+      drupal_goto();
+    }
+  }
+
+  // Cleanup number
+  $number = ereg_replace("[^0-9]", '', $number);
+
+  // Build SQL
+  $sql = "SELECT name, nid FROM {erp_contact} WHERE `phone` = '%s' or `fax` = '%s' or `mobile` = '%s'";
+  $result = db_query($sql, $number, $number, $number);
+  if ($result) {
+    $row = db_fetch_array($result);
+    $name = $row['name'];
+    $nid = $row['nid'];
+  }
+
+  if ($nid && $outputhtml) {
+    drupal_goto('node/'. $nid);
+  }
+
+  if (!$nid) {
+    // Try harder
+    $sql = "SELECT nid FROM {erp_contact} WHERE (`phone` like '%%%s%%') or (`fax` like '%%%s%%') or (`mobile` like '%%%s%%')";
+    $result = db_query($sql, $number, $number, $number);
+    if ($result) {
+      $row = db_fetch_array($result);
+      $name = $row['name'];
+      $nid = $row['nid'];
+    }
+
+    if ($nid && $outputhtml) {
+      drupal_goto('node/'. $nid);
+    }
+  }
+
+  if (!$nid) {
+    // Last resort, remove the first two numbers (area code) and try again
+    $sql = "SELECT nid FROM {erp_contact} WHERE (`phone` like '%%%s%%') or (`fax` like '%%%s%%') or (`mobile` like '%%%s%%')";
+    $shortnumber = substr($number, 2);
+    $result = db_query($sql, $shortnumber, $shortnumber, $shortnumber);
+    if ($result) {
+      $row = db_fetch_array($result);
+      $name = $row['name'];
+      $nid = $row['nid'];
+    }
+
+    if ($nid && $outputhtml) {
+      drupal_goto('node/'. $nid);
+    }
+  }
+
+  if ($outputhtml) {
+    $output = "<h1>No matching customers for $number</h1>";
+
+    $form['#action'] = url('erp/customer/load');
+    $form['#attributes'] = array('class' => 'customer-load');
+
+    $form['customer']['key'] =
+      array('#type' => 'textfield',
+            '#size' => 80,
+            '#maxlength' => 128,
+            '#default_value' => '',
+            '#autocomplete_path' => 'erp/customer/autocomplete');
+
+    $form['customer']['load'] =
+      array('#type' => 'submit',
+            '#value' => t('Load'));
+
+    $form['customer']['add'] =
+      array('#type' => 'submit',
+            '#value' => t('Add new customer'));
+
+    $output .= "<h2>Choose your customer, click 'Load' and ensure that their phone number is correctly set or enter a new customer and click 'Add new customer to save'</h2>";
+
+    $output .= drupal_get_form('erp_customer_add_form', NULL);
+
+    return $output;
+  }
+
+  if ($nid) {
+    $node = node_load($nid);
+    if ($node->title != $name) {
+      print $node->title .':'. $name ."\n";
+    }
+    else {
+      print $name ."\n";
+    }
+    exit;
+  }
+}
+
+function erp_contact_number_find_raw($number) {
+  erp_contact_number_find($number, FALSE);
+}

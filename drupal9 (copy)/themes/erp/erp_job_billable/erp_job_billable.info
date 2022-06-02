@@ -1,0 +1,16 @@
+; $Id: erp_job_billable.info,v 1.6.2.7 2010/02/04 09:14:31 simon Exp $
+name = erp job billable
+description = ERP job billable module
+dependencies[] = erp
+dependencies[] = erp_job
+dependencies[] = erp_store
+dependencies[] = erp_customer
+package = "ERP"
+core = 6.x
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

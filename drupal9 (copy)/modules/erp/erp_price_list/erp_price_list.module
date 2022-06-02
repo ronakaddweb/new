@@ -1,0 +1,495 @@
+<?php
+// $Id: erp_price_list.module,v 1.13.2.5 2009/12/26 00:22:22 simon Exp $
+
+/* TODO db_next_id() is gone, and replaced as db_last_insert_id()
+   Since db_next_id() introduce some problems, and the use of this function
+   can be replaced by database level auto increment handling, db_next_id()
+   is now gone and replaced as db_last_insert_id() with help of serial type
+   under Schema API (check out http://drupal.org/node/149176 for more details).
+   Please refer to drupal_write_record() as demonstration. */
+
+/* TODO FormAPI image buttons are now supported.
+   FormAPI now offers the 'image_button' element type, allowing developers to
+   use icons or other custom images in place of traditional HTML submit buttons.
+
+$form['my_image_button'] = array(
+  '#type'         => 'image_button',
+  '#title'        => t('My button'),
+  '#return_value' => 'my_data',
+  '#src'          => 'my/image/path.jpg',
+); */
+
+/* TODO Remove $row argument from db_result() method
+   The $row argument of db_result() was removed from the database abstraction
+   layer in 6.x core, as it was a database dependent option. Developers need to
+   use other handling to replace the needs of this method. */
+
+/* TODO Node previews and adding form fields to the node form.
+   There is a subtle but important difference in the way node previews (and other
+   such operations) are carried out when adding or editing a node. With the new
+   Forms API, the node form is handled as a multi-step form. When the node form
+   is previewed, all the form values are submitted, and the form is rebuilt with
+   those form values put into $form['#node']. Thus, form elements that are added
+   to the node form will lose any user input unless they set their '#default_value'
+   elements using this embedded node object. */
+
+/* TODO New user_mail_tokens() method may be useful.
+   user.module now provides a user_mail_tokens() function to return an array
+   of the tokens available for the email notification messages it sends when
+   accounts are created, activated, blocked, etc. Contributed modules that
+   wish to make use of the same tokens for their own needs are encouraged
+   to use this function. */
+
+/* TODO
+   There is a new hook_watchdog in core. This means that contributed modules
+   can implement hook_watchdog to log Drupal events to custom destinations.
+   Two core modules are included, dblog.module (formerly known as watchdog.module),
+   and syslog.module. Other modules in contrib include an emaillog.module,
+   included in the logging_alerts module. See syslog or emaillog for an
+   example on how to implement hook_watchdog.
+function example_watchdog($log = array()) {
+  if ($log['severity'] == WATCHDOG_ALERT) {
+    mysms_send($log['user']->uid,
+      $log['type'],
+      $log['message'],
+      $log['variables'],
+      $log['severity'],
+      $log['referer'],
+      $log['ip'],
+      format_date($log['timestamp']));
+  }
+} */
+
+/* TODO Implement the hook_theme registry. Combine all theme registry entries
+   into one hook_theme function in each corresponding module file.
+function erp_price_list_theme() {
+  return array(
+    'erp_price_list_view' => array(
+      'file' => 'erp_price_list.module',
+      'arguments' => array(
+        'list' => array (),
+      ),
+    ),
+  );
+}; */
+
+
+/* TODO
+   An argument for replacements has been added to format_plural(),
+   escaping and/or theming the values just as done with t().*/
+
+function erp_price_list_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#price_list' :
+    case 'admin/modules#description' :
+      return t('ERP price list module is used to allow each user to make their own price list.');
+  }
+}
+
+function erp_price_list_perm() {
+  return array (
+    'add to price list',
+    'remove from price list',
+    'print price list',
+    'price list view',
+  );
+}
+
+function erp_price_list_menu() {
+  $items['erp/pricelist/add'] = array(
+    'page callback' => 'erp_price_list_add_item',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('add to price list')
+  );
+
+  $items['erp/pricelist/view'] = array(
+    'title' => 'price list',
+    'page callback' => 'erp_price_list_view',
+    'access arguments' => array('price list view')
+  );
+
+  $items['erp/pricelist/remove'] = array(
+    'page callback' => 'erp_price_list_remove',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('remove from price list')
+  );
+
+  $items['erp/pricelist/print'] = array(
+    'page callback' => 'erp_price_list_print',
+    'type' => MENU_CALLBACK,
+    'access arguments' => array('print price list')
+  );
+
+  return $items;
+}
+
+function erp_price_list_erp_item_link($node = null) {
+  $links = array ();
+
+  if ($node->type == 'erp_item') {
+    if (_erp_price_list_check($node->code)) {
+      $links['erp_price_list_erp_item_link'] =
+        array('title' => t('remove from price list'),
+              'href' => 'erp/pricelist/remove/'. $node->code);
+    }
+    else {
+      $links ['erp_price_list_erp_item_link'] =
+        array('title' => t('add to price list'),
+              'href' => 'erp/item/price_list/'. $node->nid);
+    }
+  }
+
+  return $links;
+}
+
+function erp_price_list_add_item($node = null, $goto = TRUE) {
+  global $user;
+
+  //We want to save untaxed amount (e.g. for different regions) - convert taxed sell price to untaxed.
+  $node->sell_price = $node->sell_price;
+  db_query("INSERT INTO {erp_price_list} (code, title, sell_price, buy_price, uid, last, nid, category) VALUES ('%s', '%s', '%f', '%f', %d, %d, %d, '%s') ON DUPLICATE KEY UPDATE title='%s', sell_price=%d", $node->code, $node->title, $node->sell_price, $node->buy_price, $user->uid, time(), $node->nid, $node->category, $node->title, $node->sell_price);
+
+  drupal_set_message($node->title . t(' has been added to your price list'));
+
+  drupal_goto('erp/pricelist/view');//$_SERVER['HTTP_REFERER']);
+}
+
+function erp_price_list_remove() {
+  global $user;
+  $code = arg(3);
+
+  _erp_price_list_delete_code($code);
+
+  drupal_set_message(t('This item has been removed from your price list'));
+
+  drupal_goto($_SERVER['HTTP_REFERER']);
+}
+
+function erp_price_list_view() {
+  global $user;
+  $uid = $user->uid;
+  $type = 'erp_item';
+
+  print theme('page', theme('erp_price_list_view', _erp_price_list_get($code, $uid)));
+}
+
+function erp_price_list_header() {
+  $header = array(
+                  array('data' => t('code'), 'field' => 'p.code'),
+                  array('data' => t('title'), 'field' => 'p.title'),
+                  array('data' => t('sell price'), 'field' => 'p.sell_price'),
+                  array('data' => t('added'), 'field' => 'p.added'),
+                  t('operations'));
+
+  return $header;
+}
+
+
+function theme_erp_price_list_view($list = array ()) {
+  global $user;
+  $rows = array ();
+
+  if (isset ($list)) {
+    foreach ($list as $code => $data) {
+      $sell_price = array_pop(module_invoke_all('erp_tax_inc_amount', $data->sell_price));
+
+      if (module_exists('erp_pricing')) {
+        $sell_price = erp_pricing_rounding($sell_price);
+      }
+      $row[] = l($data->code, 'item', array('attributes' => array('attributes' => null, 'query' => 'edit%5Bfilter%5D='. $data->code)));
+      $row[] = l($data->title, 'item', array('attributes' => array('attributes' => null, 'query' => 'edit%5Bfilter%5D='. $data->code)));
+      $row[] = '$'. $sell_price;
+      $row[] = format_date($data->last, 'custom', 'Y-m-d H:i');
+
+      if ($user->uid == $data->uid || $user->uid == 1) {
+        $row[] = l(t('delete'), "erp/pricelist/remove/". $data->code) .' '.
+          l(t('edit'), "erp/item/price_list/". $data->nid) .' '.
+          erp_item_cart_link($data);
+      }
+      else {
+        $result = $title;
+      }
+      $rows[] = array('data' => $row);
+      unset($row);
+    }
+  }
+
+  return theme('table', erp_price_list_header(), $rows);
+}
+
+function _erp_price_list_delete_code($code) {
+  global $user;
+
+  db_query("DELETE FROM {erp_price_list} WHERE code = '%s' AND uid = %d", $code, $user->uid);
+}
+
+function _erp_price_list_delete_uid($uid) {
+  db_query("DELETE FROM {erp_price_list} WHERE uid = %d", $uid);
+}
+
+function _erp_price_list_get($code, $uid = NULL) {
+  $sql = "SELECT p.code, p.uid, p.title, p.last, p.sell_price, p.nid FROM {erp_price_list} p";
+
+  if ($uid) {
+    $sql .= " WHERE p.uid = %d";
+  }
+
+  $result = db_query($sql . tablesort_sql(erp_price_list_header()), $uid);
+
+  while ($data = db_fetch_object($result)) {
+    $row[$data->code] = $data;
+  }
+  return $row;
+}
+
+function erp_price_list_get($code, $uid = NULL) {
+  $sql = "SELECT p.code, p.uid, p.title, p.last, p.sell_price, p.buy_price, p.nid, p.category FROM {erp_price_list} p";
+
+  $sqlarray = array();
+  if ($uid) {
+    $sqlarray[] = "p.uid = " . (int)$uid;
+  }
+  if ($code){
+    $sqlarray[] = "p.code = '" . db_escape_string($code) . "'";
+  }
+  if (count($sqlarray)){
+    $sql .= ' WHERE ' . implode(' AND ', $sqlarray);
+  }
+  $sql .= " ORDER by p.last DESC";
+
+  $result = db_query($sql, $uid);
+
+  while ($data = db_fetch_object($result)) {
+    $row[$data->code] = $data;
+  }
+  return $row;
+}
+
+function _erp_price_list_check($code) {
+  global $user;
+
+  $sql = "SELECT COUNT(*) FROM {erp_price_list} WHERE code = '%s' AND uid = %d";
+
+  return db_result(db_query($sql, $code, $user->uid));
+}
+
+function erp_price_list_multiple_add_confirm() {
+  $edit = $_POST['edit'];
+
+  $category_tid = variable_get('erp_item_category_tid', FALSE);
+  $manufacturer_tid = variable_get('erp_item_manufacturer_tid', FALSE);
+
+  $form['nodes'] = array('#prefix' => '<ul>', '#suffix' => '</ul>', '#tree' => TRUE);
+  // array_filter returns only elements with true values
+  foreach (array_filter($edit['nodes']) as $nid => $value) {
+    $curr_node = node_load($nid);
+    //$title = db_result(db_query('SELECT title FROM {node} WHERE nid = %d', $nid));
+    $form['nodes'][$nid] = array('#type' => 'hidden', '#value' => $nid, '#prefix' => '<li>', '#suffix' =>  '$' . $curr_node->buy_price . 'ex - ' . $curr_node->supplier . ' - ' . $curr_node->title . "</li>\n");
+    if (!isset($node)) {
+      $node = node_load($nid);
+    }
+  }
+  $form['operation'] = array('#type' => 'hidden', '#value' => 'add_to_price_list_bulk');
+
+  // More logic - cheapest? preferred? local/imported? selected?
+  $price_nid = array_pop($edit['nodes']);
+  $price_node = node_load($price_nid);
+
+  $category = taxonomy_node_get_terms($price_nid);
+  $manufacturer = taxonomy_node_get_terms($price_nid);
+
+  if (is_array($category) && (count($category) > 0)) {
+    foreach ($category as $tid => $cat) {
+      if ($cat->vid == $category_tid) {
+        $category_text = $cat->name;
+      }
+    }
+  }
+
+  if (is_array($manufacturer) && (count($manufacturer) > 0)) {
+    foreach ($manufacturer as $tid => $manu) {
+      if ($manu->vid == $manufacturer_tid) {
+        $manufacturer_text = $manu->name;
+      }
+    }
+  }
+
+  erp_item_add_to_price_list_form($price_node, $form);
+
+  $form['item_add_to_price_list']['manufacturer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Manufacturer'),
+          '#size' => 20,
+          '#maxlength' => 128,
+          '#autocomplete_path' => 'taxonomy/autocomplete/'. $manufacturer_tid,
+          '#default_value' => $manufacturer_text);
+
+  $form['item_add_to_price_list']['code'] =
+    array('#type' => 'textfield',
+          '#title' => t('Code'),
+          '#size' => 20,
+          '#maxlength' => 128,
+          '#default_value' => $node->code);
+
+  return confirm_form('erp_price_list_multiple_add_confirm', $form, t('Are you sure you want to alter & add these items to the price list?'), 'item/list', t('This action cannot be undone.'), t('Add all'), t('Cancel'));
+}
+
+function erp_price_list_multiple_add_confirm_submit($form, &$form_state) {
+  $edit = $_POST['edit'];
+
+  $category_tid = variable_get('erp_item_category_tid', FALSE);
+  $manufacturer_tid = variable_get('erp_item_manufacturer_tid', FALSE);
+
+  if ($edit['confirm']) {
+    foreach ($edit['nodes'] as $nid => $value) {
+      $node = node_load($nid);
+
+      $node->title = $edit['title'];
+      $node->code = $edit['code'];
+
+      if (module_exists('erp_pricing')) {
+        $sell_price = erp_pricing_rounding($edit['sell_price']);
+      }
+      else {
+        $sell_price = $edit['sell_price'];
+      }
+      $node->sell_price = array_pop(module_invoke_all('erp_tax_ex_amount', $sell_price));
+
+      unset($node->taxonomy);
+      $node->taxonomy['tags'][$category_tid] = $edit['category'];
+      $node->taxonomy['tags'][$manufacturer_tid] = $edit['manufacturer'];
+
+      $node->item_locked = TRUE;
+
+      node_save($node);
+    }
+
+    $price_node = node_load(array_pop($edit['nodes']));
+    $price_node->category = $edit['category'];
+
+    erp_price_list_add_item($price_node, FALSE);
+
+    drupal_set_message(t('The items have been updated and added.'));
+  }
+  $form_state['redirect'] = 'item/list';
+}
+
+function erp_price_list_views_tables() {
+  $tables['erp_price_list'] = array(
+    'name' => 'erp_price_list',
+    'provider' => 'internal',
+    'join' => array(
+      'left' => array(
+         'table' => 'node',
+         'field' => 'nid'),
+      'right' => array(
+         'field' => 'nid'),
+      'type' => 'inner'),
+    'fields' => array(
+      'sell_price' => array(
+        'name' => t('price list: sell price'),
+        'label' => t('sell price'),
+        'sortable' => TRUE,
+        'handler' => 'views_handler_field_price_list_sell_price'),
+      'alternatives' => array(
+        'name' => t('price list: alternatives'),
+        'label' => t('alternatives'),
+        'notafield' => TRUE,
+        'handler' => 'views_handler_field_erp_item_alternates')),
+    'sorts' => array(
+      'sell_price' => array(
+        'name' => t('sell price'))));
+
+  return $tables;
+}
+
+function views_handler_field_price_list_sell_price($op, &$query, $argtype, $arg = '') {
+  // Invoke "tax" modules to give us a correct price
+  $sell_price = array_pop(module_invoke_all('erp_tax_inc_amount', $arg->erp_price_list_sell_price));
+
+  if (module_exists('erp_pricing')) {
+    $sell_price = erp_pricing_rounding($sell_price);
+  }
+
+  return sprintf("%10.2f", $sell_price);
+}
+
+function views_handler_field_erp_item_alternates($op, &$query, $argtype, $arg = '') {
+  $sql = 'SELECT code FROM {erp_item} WHERE nid = %d';
+  $result = db_query($sql, $arg->nid);
+  if (!($code = array_pop(db_fetch_array($result)))) {
+    $code = '';
+  }
+  return l($code, 'item/list', array('attributes' => array('attributes' => null, 'query' => 'edit%5Bfilter%5D='. $code)));
+}
+
+function erp_price_list_views_default_views() {
+  $view = new stdClass();
+  $view->name = 'erp_price_list';
+  $view->description = 'Price List';
+
+  $view->page = TRUE;
+  $view->page_title = 'Price List';
+  $view->page_header = '';
+  $view->page_header_format = '1';
+  $view->page_footer = '';
+  $view->page_footer_format = '1';
+  $view->page_empty = '';
+  $view->page_empty_format = '1';
+  $view->page_type = 'table';
+  $view->url = 'erp/pricelist/view';
+  $view->use_pager = TRUE;
+  $view->nodes_per_page = '10';
+  $view->menu = TRUE;
+  $view->menu_title = 'price list';
+  $view->menu_tab = FALSE;
+  $view->menu_tab_default = FALSE;
+  $view->menu_weight = '';
+  $view->sort = array (
+  );
+  $view->argument = array (
+  );
+  $view->field = array (
+                        array (
+                               'tablename' => 'term_node_2',
+                               'field' => 'name',
+                               'label' => 'Category',
+                               ),
+                        array (
+                               'tablename' => 'node',
+                               'field' => 'title',
+                               'label' => 'Title',
+                               'handler' => 'views_handler_field_nodelink',
+                               'sortable' => '1',
+                               ),
+                        array (
+                               'tablename' => 'erp_stock',
+                               'field' => 'stock_avail',
+                               'label' => 'Stock',
+                               ),
+                        array (
+                               'tablename' => 'erp_price_list',
+                               'field' => 'alternatives',
+                               'label' => 'Alternatives',
+                               ),
+                        array (
+                               'tablename' => 'erp_price_list',
+                               'field' => 'sell_price',
+                               'label' => 'Price',
+                               'sortable' => '1',
+                               ),
+                        array (
+                               'tablename' => 'erp_item',
+                               'field' => 'add_to_cart',
+                               'label' => 'Cart?',
+                               ),
+                        );
+  $view->filter = array (
+  );
+  $view->exposed_filter = array (
+  );
+  $view->requires = array(term_node_2, node, erp_stock, erp_price_list, erp_item);
+  $views[$view->name] = $view;
+
+  return $views;
+}

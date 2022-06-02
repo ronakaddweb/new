@@ -1,0 +1,840 @@
+<?php
+// $Id: erp_timesheet.module,v 1.14.2.7 2009/12/26 00:22:23 simon Exp $
+
+/* TODO Implement the hook_theme registry. Combine all theme registry entries
+   into one hook_theme function in each corresponding module file.
+function erp_timesheet_theme() {
+  return array(
+    'erp_timesheet_entries' => array(
+      'file' => 'erp_timesheet.module',
+      'arguments' => array(
+        'form' => NULL,
+      ),
+    ),
+    'erp_timesheet_info' => array(
+      'file' => 'erp_timesheet.module',
+      'arguments' => array(
+        'node' => NULL,
+      ),
+    ),
+    'erp_timesheet_newline' => array(
+      'file' => 'erp_timesheet.module',
+      'arguments' => array(
+        'form' => NULL,
+      ),
+    ),
+  );
+}; */
+
+/**
+ *
+ * Timesheet module
+ */
+
+/**
+ * Help function for timesheet
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_timesheet_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description';
+      // This description is shown in the listings at admin/modules.
+      return t('ERP timesheet module.');
+      break;
+    case 'node/add#erp_timesheet':
+      //This description shows up when users click "create content."
+      return t('ERP timesheet.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * Implementation of timesheet_node_name
+ *
+ * @param unknown_type $node
+ * @return text
+ */
+function erp_timesheet_node_name($node) {
+  return t('erp timesheet');
+}
+
+/**
+ * Implementation of timesheet_node_info
+ *
+ * @return array of information
+ */
+function erp_timesheet_node_info() {
+  return array('erp_timesheet' =>
+               array('name' => t('erp timesheet'),
+                     'module' => 'erp_timesheet',
+                     'description' => t('ERP Timesheet module'),
+                     'title_label' => t('Timesheet entererd by'),
+                     'has_body' => TRUE));
+}
+
+/**
+ * Return whether the user has access to this function or not
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_timesheet_access($op, $node, $account) {
+  if ($op == 'create') {
+    return user_access('create timesheet', $account);
+  }
+
+  if ($op == 'update' || $op == 'delete') {
+    if (user_access('edit timesheet', $account) && ($account->uid == $node->uid)) {
+      return TRUE;
+    }
+  }
+}
+
+/**
+ * Permissions for timesheet
+ *
+ * @return unknown
+ */
+function erp_timesheet_perm() {
+  return array('create timesheet', 'edit timesheet', 'list timesheets');
+}
+
+/**
+ * Links for timesheets
+ *
+ * @param unknown_type $type
+ * @param unknown_type $node
+ * @param unknown_type $main
+ * @return unknown
+ */
+function erp_timesheet_link($type, $node = 0, $main) {
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_timesheet') {
+    if (erp_timesheet_access('update', $node) && !user_access('administer nodes')) {
+      $links['erp_timesheet_link'] =
+        array('title' => t('edit this timesheet'),
+              'href' => 'node/'. $node->nid .'/edit');
+    }
+
+    $links = array_merge($links, module_invoke_all('erp_timesheet_link', $node));
+  }
+
+  return $links;
+}
+
+function erp_timesheet_erp_job_link($node) {
+  $links['erp_timesheet_erp_job_link'] =
+    array('title' => t('add timesheet'),
+          'href' => 'node/add/erp_timesheet/'. $node->nid,
+          'attributes' => array('title' => t('Add timesheet for this job')));
+  return $links;
+}
+
+/**
+ * Menu entries for the timesheet module
+ *
+ * @param unknown_type $may_cache
+ * @return unknown
+ */
+function erp_timesheet_menu() {
+  $items['admin/erp/timesheet'] = array(
+    'title' => 'timesheet',
+    'description' => 'Configure erp timesheet settings',
+    'access arguments' => array('admin timesheet'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_timesheet_admin_settings')
+  );
+
+  return $items;
+}
+
+function erp_timesheet_admin_settings() {
+  drupal_set_title(t('Timesheet settings'));
+
+  $form['erp_timesheet_default_code'] =
+    array('#type' => 'textfield',
+			    '#title' => t('Default timesheet item code'),
+			    '#description' => t('The item code that will be given to timesheet items when invoiced.'),
+			    '#default_value' => variable_get('erp_timesheet_default_code', NULL)
+    );
+
+  return system_settings_form($form);
+}
+
+/**
+ * List timesheets
+ *
+ */
+function erp_timesheet_list() {
+  print theme('page', 'Coming soon');
+}
+
+/**
+ * Validate submitted timesheet information
+ *
+ * @param unknown_type $node
+ */
+/*function erp_timesheet_validate(&$node) {
+  global $user;
+
+  $edit = $_POST['edit'];
+
+  if ($edit) {
+    erp_owner_validate($node);
+  }
+  else {
+    if (!$node->title) {
+      $node->title = $user->name . ' - ' . date('d/m/Y');
+    }
+  }
+}*/
+
+/**
+ * Helper function to insert timesheet data after node submission
+ *
+ * @param unknown_type $node
+ */
+function _insert_timesheet_data($node) {
+  // Clear out old entries that have not already been invoiced.
+  db_query("DELETE FROM {erp_timesheet_data} WHERE timesheet_id = %d AND invoiced = 'N'", $node->nid);
+
+  // Insert new entries
+  if (is_array($node->entries['timesheet_time'])) {
+    for ($i = 0 ; $i < count($node->entries['timesheet_time']); $i++) {
+      if (!empty($node->entries['timesheet_time'][$i])) {
+        // Retrieve the customer id.
+        if ($node->entries['timesheet_customer'][$i]) {
+          $customer = _erp_customer_find($node->entries['timesheet_customer'][$i]);
+          $customer_nid = $customer->nid;
+        }
+        else {
+          $customer_nid = 0;
+        }
+        db_query("INSERT INTO {erp_timesheet_data} (timesheet_id, line, time, customer_nid, ts_date, dept, comments) VALUES (%d, %d, %f, %d, '%s', '%s', '%s')", $node->nid, $node->entries['timesheet_line'][$i], $node->entries['timesheet_time'][$i], $customer_nid, $node->entries['timesheet_date'][$i], $node->entries['timesheet_dept'][$i], $node->entries['timesheet_comments'][$i]);
+      }
+    }
+  }
+}
+
+/**
+ * Timesheet hook for node module on node insert
+ *
+ * @param unknown_type $node
+ */
+function erp_timesheet_insert($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  db_query('INSERT INTO {erp_timesheet} (nid, timesheet_id, customer_nid, job_id) VALUES (%d, NULL, %d, %d)', $node->nid, $node->customer_nid, $node->job_id);
+
+  _insert_timesheet_data($node);
+}
+
+/**
+ * Timesheet hook for node module on node update
+ *
+ * @param unknown_type $node
+ */
+function erp_timesheet_update($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  _insert_timesheet_data($node);
+
+  db_query('UPDATE {erp_timesheet} SET timesheet_id = %d, customer_nid = %d, job_id = %d WHERE nid = %d', $node->timesheet_id, $node->customer_nid, $node->job_id, $node->nid);
+}
+
+/**
+ * Timesheet hook for node module on node delete
+ *
+ * @param unknown_type $node
+ */
+function erp_timesheet_delete($node) {
+  db_query('DELETE FROM {erp_timesheet} WHERE nid = %d', $node->nid);
+  db_query('DELETE FROM {erp_timesheet_data} WHERE timesheet_id = %d', $node->nid);
+}
+
+/**
+ * Load extra data for timesheet from the data table.
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_timesheet_load(&$node) {
+  $timesheet = db_fetch_object(db_query('SELECT * FROM {erp_timesheet} WHERE nid = %d', $node->nid));
+
+  // Now load the entries
+  // TODO: Split into its own function.
+  $result = db_query('SELECT * FROM {erp_timesheet_data} WHERE timesheet_id = %d', $node->nid);
+
+  //$i = 0;
+  while ($timesheet_data = db_fetch_array($result)) {
+    //$customer = node_load($timesheet_data['customer_nid']);
+
+    $timesheet->entries['timesheet_line'][] = $timesheet_data['line'];
+    $timesheet->entries['timesheet_time'][] = $timesheet_data['time'];
+    $timesheet->entries['timesheet_customer_nid'][] = $timesheet_data['customer_nid'];
+    if ($timesheet_data['customer_nid']) {
+      $timesheet->entries['timesheet_customer'][] = $customer->title;
+    }
+    $timesheet->entries['timesheet_date'][] = $timesheet_data['ts_date'];
+    $timesheet->entries['timesheet_dept'][] = $timesheet_data['dept'];
+
+    $timesheet->entries['timesheet_comments'][] = $timesheet_data['comments'];
+    //$i++;
+  }
+
+  return $timesheet;
+}
+
+/**
+ * Display the timesheet form to allow editing
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_timesheet_form(&$node, $form_values) {
+  global $user;
+
+  $edit = erp_timesheet_add_newline($form_values);
+
+  erp_set_customer($node);
+
+  if (!$edit['entries']) {
+    if (is_numeric(arg(3))) {
+      // This appears to be from a job
+      $newnode = $node;
+
+      $node = node_load(arg(3));
+      $node->comment = $newnode->comment;
+      $node->created = $newnode->created;
+      $node->date = $newnode->date;
+      $node->name = $newnode->name;
+      $node->type = $newnode->type;
+      $node->uid = $newnode->uid;
+      unset($node->title);
+      unset($node->comment_count);
+
+      /*
+      $wid = workflow_get_workflow_for_type('erp_job');
+      $states = workflow_get_states($wid) + array(t('(creation)'));
+      $result = db_query("SELECT h.*, u.name FROM {workflow_node_history} h LEFT JOIN {users} u ON h.uid = u.uid WHERE nid = %d ORDER BY stamp ASC", $node->nid);
+      $i = 0;
+
+      // Figure out item id for labour
+      $item_nid = variable_get('job_invoice_item', '');
+
+      while ($history = db_fetch_object($result)) {
+        if ($history->billable_time > 0) {
+          $item_node = node_load($item_nid);
+
+          $node->entries['item'][$i] = $item_nid;
+          $node->entries['item_desc'][$i] = erp_item_desc_build($item_node);
+          $node->entries['qty'][$i] = $history->billable_time;
+          $node->entries['extra'][$i] = date('d-m-Y', $history->stamp) .' - '. check_plain($history->name) .' - '. check_plain($history->comment);
+          $node->entries['price'][$i] = erp_item_price($item_nid);
+          $i++;
+        }
+      }
+      */
+    }
+  }
+  else {
+    $node = (object)$edit;
+  }
+
+  if (!$node->owner) {
+    $node->owner = $user->name;
+  }
+
+  if (!$node->title) {
+    $node->title = $user->name . ' - ' . date("d/m/Y");
+  }
+
+  $form['#jscalendar_ifFormat'] = '%d-%m-%Y';
+  //$form['#ajaxsubmit'] = TRUE;
+
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => t('Timesheet Entered by'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['timesheet_details'] =
+    array('#prefix' => '<div class="timesheet-details">',
+          '#type' => 'fieldset',
+          '#title' => 'timesheet details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->timesheet_id) {
+    $form['timesheet_details']['timesheet_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'Timesheet id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->timesheet_id);
+  }
+
+  $form['timesheet_details']['customer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Customer'),
+          '#default_value' => $node->customer,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['customer_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->customer_nid);
+
+  $rows = array();
+  $count = count($node->entries['timesheet_time']);
+
+  $form['entries'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Timesheet Entries'),
+          '#tree' => TRUE,
+          '#theme' => 'erp_timesheet_entries',
+          '#collapsible' => TRUE,
+          '#collapsed' => FALSE,
+          '#prefix' => '<div class="entries">',
+          '#suffix' => '</div>');
+
+  // Now actually display the rows
+  for ($i = 0; $i < $count; $i++) {
+    if (!$node->entries['timesheet_line'][$i]) {
+      $node->entries['timesheet_line'][$i] = $i;
+    }
+
+    $form['entries']['timesheet_line'][$i] =
+      array('#type' => 'hidden',
+            '#default_value' => $node->entries['timesheet_line'][$i]);
+
+    $form['entries']['timesheet_time'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 6,
+            '#maxlength' => 6,
+            '#default_value' => $node->entries['timesheet_time'][$i]);
+
+    $form['entries']['timesheet_date'][$i] =
+      array('#type' => 'textfield',
+            '#attributes' => array('class' => 'jscalendar'),
+            '#size' => 12,
+            '#maxlength' => 12,
+            '#default_value' => $node->entries['timesheet_date'][$i]);
+
+    $form['entries']['timesheet_dept'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 20,
+            '#maxlength' => 20,
+            '#default_value' => $node->entries['timesheet_dept'][$i]);
+
+    $form['entries']['timesheet_comments'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 50,
+            '#maxlength' => 255,
+            '#default_value' => $node->entries['timesheet_comments'][$i]);
+
+    $form['entries']['delete'][$i] = array(
+      '#type'  => 'button',
+      '#name'  => 'delete-' . $i,
+      '#value' => 'X',
+    );
+  }
+
+  $form['newline'] =
+    array('#type' => 'fieldset',
+          '#prefix' => '<div class="newline">',
+          '#tree' => TRUE,
+          '#theme' => 'erp_timesheet_newline',
+          '#title' => t('New Timesheet Line'),
+          '#collapsible' => TRUE,
+          '#collapsed' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['newline']['timesheet_line'] =
+    array('#type' => 'hidden',
+          '#default_value' => $count++);
+
+  $form['newline']['timesheet_time'] =
+    array('#type' => 'textfield',
+          '#title' => 'Time',
+          '#size' => 6,
+          '#maxlength' => 6,
+          '#default_value' => '');
+
+  $form['newline']['timesheet_date'] =
+    array('#type' => 'textfield',
+          '#title' => 'Date',
+          '#attributes' => array('class' => 'jscalendar'),
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => '');
+
+  $form['newline']['timesheet_dept'] =
+    array('#type' => 'textfield',
+          '#title' => 'Dept',
+          '#size' => 20,
+          '#maxlength' => 20,
+          '#default_value' => '');
+
+  $form['newline']['timesheet_comments'] =
+    array('#type' => 'textfield',
+          '#title' => 'Comments',
+          '#size' => 50,
+          '#maxlength' => 255,
+          '#default_value' => '');
+
+  $form['newline']['addline'] =
+    array('#type' => 'button',
+          '#prefix' => '<div class="addline">',
+          '#name' => 'addline',
+          '#value' => t('Add line'),
+          '#suffix' => '</div>');
+
+  return $form;
+}
+
+/**
+ * Helper function to display timesheet entries.
+ *
+ * @param unknown_type $form
+ * @return unknown
+ */
+function theme_erp_timesheet_entries($form) {
+  $count = 0;
+  //$header = array(t('Time'), t('Customer'), t('Comments'));
+  $header = array(t('Time'), t('Date'), t('Dept'), t('Comments'));
+  $rows = array();
+
+  foreach (element_children($form['timesheet_time']) as $key) {
+    /* $rows[] = array(drupal_render($form['timesheet_line'][$key]) .' '.
+                    drupal_render($form['timesheet_time'][$key]),
+                    drupal_render($form['timesheet_customer'][$key]),
+                    drupal_render($form['timesheet_comments'][$key])); */
+
+    $rows[] = array(drupal_render($form['timesheet_line'][$key]) .' '.
+                    drupal_render($form['timesheet_time'][$key]),
+                    drupal_render($form['timesheet_date'][$key]),
+                    drupal_render($form['timesheet_dept'][$key]),
+                    drupal_render($form['timesheet_comments'][$key]),
+                    drupal_render($form['delete'][$key]));
+
+    $count++;
+  }
+
+  if ($count > 0) {
+    $output .= '<div class="entries">' . theme('table', $header, $rows) . '</div>';
+  }
+
+  $output .= drupal_render($form);
+
+  return $output;
+}
+
+/**
+ * Display a completed timesheet
+ *
+ * @param unknown_type $node
+ * @param unknown_type $teaser
+ * @param unknown_type $page
+ */
+function erp_timesheet_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_timesheet_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+/**
+ * Display timesheet information.
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function theme_erp_timesheet_info($node) {
+  $output = '<div class="timesheet-info">';
+
+  $output .= '<div class="entered-by">';
+  $output .= t('Timesheet Entered by: ') . $node->title;
+  $output .= '</div>';
+
+  $output .= implode(module_invoke_all('erp_extra_info', $node));
+
+  // Display timesheet entries
+  //$header = array(t('Time'), t('Customer'), t('Comments'));
+  $header = array(t('Time'), t('Date'), t('Dept'), t('Comments'));
+  $rows = array();
+  for ($i = 0; $i < count($node->entries['timesheet_time']) ; $i++) {
+
+    // If we're allowing people to choose the customer per line.
+    if ($node->entries['timesheet_customer'][$i]) {
+      $customer = _erp_customer_find($node->entries['timesheet_customer'][$i]);
+      $link = l($customer->title, 'node/' . $customer->nid);
+
+      $row = array('data' => array($node->entries['timesheet_time'][$i],
+                                   $link,
+                                   $node->entries['timesheet_comments'][$i]));
+    }
+    else {
+      $row = array('data' => array($node->entries['timesheet_time'][$i],
+                                   $node->entries['timesheet_date'][$i],
+                                   $node->entries['timesheet_dept'][$i],
+                                   $node->entries['timesheet_comments'][$i]));
+    }
+
+    $rows[$i] = $row;
+  }
+
+  $output .= theme('table', $header, $rows);
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+function erp_timesheet_views_default_views() {
+  $view = new stdClass();
+  $view->name = 'erp_timesheet_all';
+  $view->description = 'Timesheets';
+  $view->access = array (
+                         0 => '4',
+                         1 => '3',
+                         );
+  $view->page = TRUE;
+  $view->page_title = '';
+  $view->page_header = '';
+  $view->page_header_format = '1';
+  $view->page_footer = '';
+  $view->page_footer_format = '1';
+  $view->page_empty = '';
+  $view->page_empty_format = '1';
+  $view->page_type = 'table';
+  $view->url = 'erp/timesheets';
+  $view->use_pager = TRUE;
+  $view->nodes_per_page = '50';
+  $view->menu = TRUE;
+  $view->menu_title = 'timesheets';
+  $view->menu_tab = FALSE;
+  $view->menu_tab_default = FALSE;
+  $view->menu_weight = '';
+  $view->sort = array (
+  );
+  $view->argument = array (
+  );
+  $view->field = array (
+                        array (
+                               'tablename' => 'erp_timesheet',
+                               'field' => 'timesheet_id',
+                               'label' => 'Timesheet Id',
+                               'sortable' => '1',
+                               'defaultsort' => 'DESC',
+                               ),
+                        array (
+                               'tablename' => 'node',
+                               'field' => 'created',
+                               'label' => 'Date',
+                               'handler' => 'views_handler_field_date_small',
+                               'sortable' => '1',
+                               ),
+                        array (
+                               'tablename' => 'node',
+                               'field' => 'title',
+                               'label' => 'Title',
+                               'handler' => 'views_handler_field_nodelink',
+                               'sortable' => '1',
+                               ),
+                        );
+  $view->filter = array (
+                         array (
+                                'tablename' => 'node',
+                                'field' => 'type',
+                                'operator' => 'OR',
+                                'options' => '',
+                                'value' => array (
+                                                  0 => 'erp_timesheet',
+                                                  ),
+                                ),
+                         array (
+                                'tablename' => 'node',
+                                'field' => 'status',
+                                'operator' => '=',
+                                'options' => '',
+                                'value' => '1',
+                                ),
+                         );
+  $view->exposed_filter = array (
+  );
+  $view->requires = array(erp_timesheet, node);
+  $views[$view->name] = $view;
+
+
+  return $views;
+}
+
+/**
+ * Function to work with the new "Views" module, which saves us having to write
+ * list functions all over the place. Nice!
+ *
+ * @return unknown
+ */
+function erp_timesheet_views_tables() {
+  $tables['erp_timesheet'] = array(
+    'name' => 'erp_timesheet',
+    'join' => array(
+      'left' => array(
+        'table' => 'node',
+        'field' => 'nid'),
+      'right' => array(
+        'field' => 'nid')),
+    'fields' => array(
+      'timesheet_id' => array(
+        'name' => t('timesheet: Timesheet Id'),
+        'sortable' => TRUE)),
+    'sorts' => array(
+      'timesheet_id' => array('name' => t('Timesheet Id')))
+  );
+
+  return $tables;
+}
+
+function erp_timesheet_add_newline() {
+  $edit = $_POST['edit'];
+
+  for ($i = 0; $i < count($edit['entries']['timesheet_line']); $i++) {
+    if ('X' == $_POST['delete-' . $i]) {
+      foreach ($edit['entries'] as $value => $key) {
+        if (is_array($edit['entries'][$value])) {
+          erp_delete_array_key($edit['entries'][$value], $i);
+          erp_delete_array_key($_POST['edit']['entries'][$value], $i);
+        }
+      }
+    }
+  }
+
+  if ($_POST['addline'] == t('Add line')) {
+    $newline = $edit['newline'];
+
+    if ($newline['timesheet_time']) {
+      $edit['entries']['timesheet_line'][] = $newline['timesheet_line'];
+      $edit['entries']['timesheet_time'][] = $newline['timesheet_time'];
+      //$edit['entries']['timesheet_customer'][] = $newline['timesheet_customer'];
+      $edit['entries']['timesheet_date'][] = $newline['timesheet_date'];
+      $edit['entries']['timesheet_dept'][] = $newline['timesheet_dept'];
+      $edit['entries']['timesheet_comments'][] = $newline['timesheet_comments'];
+
+      $edit['newline']['timesheet_line'] = '';
+      $edit['newline']['timesheet_time'] = '';
+      //$edit['newline']['timesheet_customer'] = '';
+      $edit['newline']['timesheet_date'] = '';
+      $edit['newline']['timesheet_dept'] = '';
+      $edit['newline']['timesheet_comments'] = '';
+    }
+  }
+  return $edit;
+}
+
+/**
+ * Theme newline entries
+ */
+function theme_erp_timesheet_newline($form) {
+  $header = array();
+  $rows = array();
+
+  /*
+  $rows[] = array(drupal_render($form['timesheet_line']) .' '.
+                  drupal_render($form['timesheet_time']),
+                  drupal_render($form['timesheet_customer']),
+                  drupal_render($form['timesheet_comments'])); */
+
+  $rows[] = array(drupal_render($form['timesheet_line']) .' '.
+                  drupal_render($form['timesheet_time']),
+                  drupal_render($form['timesheet_date']),
+                  drupal_render($form['timesheet_dept']),
+                  drupal_render($form['timesheet_comments']));
+
+  $output .= '<div class="newline">'. theme('table', $header, $rows) . '</div>';
+
+  $output .= drupal_render($form);
+
+  return $output;
+}
+
+// you may theme this function, or even theme each node type listing separately
+function erp_timesheet_erp_customer_entries($customer) {
+  $header = array(t('Title'), t('Author'), t('Replies'), t('Last reply'));
+
+  $customer_nid = $customer->nid;
+  $sql = "SELECT n.nid, n.title FROM {node} n LEFT JOIN {erp_timesheet} ts ON n.nid = ts.nid WHERE ts.customer_nid = $customer_nid AND n.type ='erp_timesheet' ORDER BY n.nid DESC";
+  $num = 10;
+  $result = pager_query($sql, $num);
+
+  while ($row = db_fetch_object($result)) {
+    $rows[] = array(l($row->title, "node/$row->nid"), theme('username', $row), $row->comment_count, format_date($row->created, 'small'));
+  }
+  if ($pager = theme('pager', NULL, $num, 0, array('type' => 'erp_timesheet'))) {
+    $rows[] = array(array('data' => $pager, 'colspan' => '4'));
+  }
+
+  if (module_exists('tabs')) {
+    if ($rows) {
+      return array(t('Timesheets') => theme('table', $header, $rows));
+    }
+  }
+  else {
+    $output = $rows ? '<fieldset><legend>' . t('Timesheets') . '</legend>'  . theme('table', $header, $rows) . '</fieldset>' : NULL;
+
+    return $output;
+  }
+}
+
+
+/**
+ * Turn the timesheet lines into invoice items.
+ */
+function erp_timesheet_erp_prepare_invoice(&$node) {
+
+  $nid = variable_get('erp_timesheet_default_code', NULL);
+  $item = node_load($nid);
+
+  for ($i = 0; $i < count($node->entries['timesheet_line']); $i++) {
+    $node->entries['line'][$i]  =
+      $node->entries['timesheet_line'][$i];
+
+    $node->entries['price'][$i] =
+      erp_item_price($nid);
+
+    $node->entries['qty'][$i]   =
+      $node->entries['timesheet_time'][$i];
+
+    $node->entries['extra'][$i] =
+      $node->entries['timesheet_comments'][$i];
+
+    $node->entries['item'][$i]  =
+      $nid;
+
+    $node->entries['item_desc'][$i] =
+      erp_item_desc_build($item);
+
+    $node->entries['completed_date'][$i] =
+      $node->entries['timesheet_date'][$i];
+  }
+
+  unset($node->entries['timesheet_line']);
+  unset($node->entries['timesheet_time']);
+  unset($node->entries['timesheet_comments']);
+  unset($node->entries['timesheet_date']);
+}

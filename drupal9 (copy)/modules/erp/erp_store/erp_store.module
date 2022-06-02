@@ -1,0 +1,763 @@
+<?php
+// $Id: erp_store.module,v 1.21.2.20 2010/04/02 22:47:09 simon Exp $
+
+/**
+ * @file
+ * ERP Store module allows breaking down erp functionality by store.
+ *
+ */
+
+/**
+ * Simple module to allow you to associate items to a store.
+ *
+ * Is only used by the stock module at this stage.
+ *
+ * Could be replaced by the various "related nodes" type modules that
+ * have been discussed on the mailing list, but we'll wait for one of
+ * them to become standardised upon before depending on it.
+ */
+
+/**
+ * Store help fuction
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_store_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP store module.');
+      break;
+    case 'node/add#erp_store':
+      // This description shows when users click "create content."
+      return t('ERP store.');
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_name().
+ *
+ * This is a required node hook. Since our module only defines one node
+ */
+function erp_store_node_name($node) {
+  return t('erp store');
+}
+
+/**
+ * Store node info
+ *
+ * @return unknown
+ */
+function erp_store_node_info() {
+  return array(
+    'erp_store' => array(
+      'name' => t('erp store'),
+      'module' => 'erp_store',
+      'description' => t('ERP Store module'),
+      'title_label' => t('Store'),
+      'has_body' => TRUE
+    )
+  );
+}
+
+/**
+ * Store permissions
+ *
+ * @return unknown
+ */
+function erp_store_perm() {
+  return array('edit store', 'create store', 'edit all stores', 'edit own store', 'store list', 'admin store');
+}
+
+/**
+ * Implementation of hook_access().
+ *
+ * Node modules may implement hook_access() to determine the operations
+ * users may perform on nodes. This example uses a very common access pattern.
+ */
+function erp_store_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('create store', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit all stores', $account)) {
+        return TRUE;
+      }
+      if (user_access('edit own store', $account)) {
+        if ($account->uid == $node->uid) {
+          return TRUE;
+        }
+      }
+      break;
+
+    case 'view':
+      return user_access('store list');
+      break;
+  }
+
+  return FALSE;
+}
+
+function erp_store_link($type, $node = 0, $main) {
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_store') {
+    $links = array_merge($links, module_invoke_all('erp_store_link', $node));
+  }
+
+  return $links;
+}
+
+/**
+ * Menu details
+ *
+ */
+function erp_store_menu() {
+  $items['erp/store/autocomplete'] = array(
+    'title' => 'store autocomplete',
+    'page callback' => 'erp_store_autocomplete',
+    'access arguments' => array('store list'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['admin/erp/store'] = array(
+    'title' => 'Store',
+    'description' => 'Configure erp store settings',
+    'access arguments' => array('admin store'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_store_admin_settings')
+  );
+
+  $items['user/%user/erp/store'] = array(
+    'title' => 'Store details',
+    'description' => 'Allow a user to choose their default store',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_store_user_store_select_form', 1),
+    'access arguments' => array('store list'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => -10);
+
+  return $items;
+}
+
+
+function erp_store_user_store_select_form($form_state, $user) {
+  $form['erp_store'] =
+    array('#type' => 'select',
+          '#title' => 'User&rsquo;s store',
+          '#options' => erp_store_list(),
+          '#default_value' => (isset($user->erp_store) ? $user->erp_store : 0));
+
+  $form['erp_stores_interested'] =
+    array('#type' => 'checkboxes',
+          '#title' => 'User&rsquo;s interested stores',
+          '#options' => erp_store_list(),
+          '#default_value' => (isset($user->erp_stores_interested) ? $user->erp_stores_interested : array()));
+
+  $form['user'] =
+    array('#type' => 'value',
+          '#value' => $user);
+
+  $form['submit'] =
+    array('#type' => 'submit',
+          '#value' => t('Save'));
+
+  return $form;
+}
+
+function erp_store_user_store_select_form_submit($form, $form_state) {
+  if ($form_state['values']['op'] == t('Save')) {
+    $edit = $form_state['values'];
+    user_save($edit['user'],
+              array('erp_store' => $edit['erp_store'],
+                    'erp_stores_interested' => $edit['erp_stores_interested']));
+  }
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $name
+ * @param unknown_type $node
+ */
+function erp_store_set_store($store_id, $node) {
+  db_query("DELETE FROM {erp_store_link} WHERE nid = '%d'", $node->nid);
+  db_query("INSERT INTO {erp_store_link} (store_id, nid) VALUES (%d, %d)", $store_id, $node->nid);
+}
+
+/**
+ * Given a job/stock/customer nid, find out what store they belong to.
+ *
+ * @param unknown_type $nid
+ * @return unknown
+ */
+function erp_store_get_store($nid) {
+  $store = db_fetch_object(db_query("SELECT store_id FROM {erp_store_link} WHERE nid = '%d'", $nid));
+
+  if ($store->store_id) {
+    $node = node_load(erp_id_to_nid('store', $store->store_id));
+
+    return $node;
+  }
+}
+
+/**
+ * Allow setting some defaults for the store module
+ *
+ */
+function erp_store_admin_settings() {
+  $form['erp_default_store'] =
+    array('#type' => 'select',
+          '#title' => t('Default Store'),
+          '#options' => erp_store_list(),
+          '#default_value' => variable_get('erp_default_store', ''));
+
+  if (module_exists('book')) {
+    $form['erp_store_doc_create'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Enable automatic creation of store documentation for each store created'),
+      '#default_value' => variable_get('erp_store_doc_create', TRUE)
+    );
+
+    foreach (book_get_books() as $book) {
+      $options[$book['nid']] = $book['title'];
+    }
+
+    $form['erp_store_doc_book'] = array(
+      '#type' => 'select',
+      '#title' => t('Book for store documentation'),
+      '#default_value' => variable_get('erp_store_doc_book', ''),
+      '#options' => $options,
+    );
+
+    $form['erp_store_doc_parent'] = array(
+      '#type' => 'select',
+      '#title' => t('Parent item for store documenation'),
+      '#default_value' => variable_get('erp_store_doc_parent', ''),
+      '#options' => book_toc(variable_get('erp_store_doc_book', ''), array(), 2),
+    );
+  }
+
+
+  return system_settings_form($form);
+}
+
+function erp_store_form_alter(&$form, &$form_state, $form_id) {
+  // Should this be a variable/registry that modules can add/remove themselves from?
+  $forms = array(
+    'erp_purchase_order_node_form',
+    'erp_goods_receive_node_form',
+    'erp_invoice_node_form',
+    'erp_cash_sale_node_form',
+    'erp_quote_node_form',
+    'erp_job_node_form',
+    'erp_payment_node_form',
+    'erp_customer_node_form',
+    'erp_end_of_day_node_form',
+  );
+
+  if (in_array($form_id, $forms)) {
+    switch ($form_id) {
+    case 'erp_job_node_form':
+      $form['job_details']['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    case 'erp_quote_node_form':
+      $form['quote_details']['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    case 'erp_invoice_node_form':
+      $form['invoice_details']['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    case 'erp_purchase_order_node_form':
+      $form['purchase_order_details']['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    case 'erp_cash_sale_node_form':
+      $form['cash_sale_details']['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    case 'erp_payment_node_form':
+      $form['payment_details']['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    case 'erp_goods_receive_node_form':
+      $form['goods_receive_details']['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    case 'erp_customer_node_form':
+      $form['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    default:
+      $form['store_id'] = erp_store_sub_form(arg(1));
+      break;
+    }
+  }
+}
+
+function erp_store_nodeapi(&$node, $op, $teaser = NULL, $page = NULL) {
+  $store_types = array('erp_invoice', 'erp_customer', 'erp_quote', 'erp_stock', 'erp_purchase_order', 'erp_goods_receive', 'erp_job', 'erp_payment', 'erp_cash_sale');
+
+  if (in_array($node->type, $store_types)) {
+    switch ($op) {
+      case 'update':
+      case 'insert':
+        erp_store_set_store($node->store_id, $node);
+        break;
+      case 'load':
+        if ($node->nid) {
+          $store = erp_store_get_store($node->nid);
+          if ($store) {
+            $node->store_id = $store->store_id;
+            $node->store_nid = $store->nid;
+            $node->store = $store->title;
+          }
+        }
+        break;
+      case 'delete':
+        db_query("DELETE FROM {erp_store_link} WHERE nid = '%d'", $node->nid);
+        break;
+    }
+  }
+}
+
+/**
+ * The store part of the form which is used to enter a store
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_store_form(&$node) {
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => t('Store Name'),
+          '#size' => 60,
+          '#maxlength' => 255,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['store_details'] =
+    array('#prefix' => '<div class="store-details">',
+          '#type' => 'fieldset',
+          '#title' => 'store details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['store_details']['company'] =
+    array('#type' => 'textfield',
+          '#title' => t('Company'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->company);
+
+  $form['store_details']['tax_id'] =
+    array('#type' => 'textfield',
+          '#title' => t('Tax id'),
+          '#rows' => 5,
+          '#default_value' => $node->tax_id);
+
+  $form['store_details']['address'] =
+    array('#type' => 'textfield',
+          '#title' => t('Address'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->address);
+
+  $form['store_details']['suburb'] =
+    array('#type' => 'textfield',
+          '#title' => t('Suburb'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->suburb);
+
+  $form['store_details']['state'] =
+    array('#type' => 'textfield',
+          '#title' => t('State'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $node->state);
+
+  $form['store_details']['postcode'] =
+    array('#type' => 'textfield',
+          '#title' => t('Postcode'),
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => $node->postcode);
+
+  $form['store_details']['phone'] =
+    array('#type' => 'textfield',
+          '#title' => t('Phone'),
+          '#size' => 10,
+          '#maxlength' => 20,
+          '#default_value' => $node->phone);
+
+  $form['store_details']['fax'] =
+    array('#type' => 'textfield',
+          '#title' => t('Fax'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $node->fax);
+
+  $form['store_details']['mobile'] =
+    array('#type' => 'textfield',
+          '#title' => t('Mobile'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $node->mobile);
+
+  $form['store_details']['email'] =
+    array('#type' => 'textfield',
+          '#title' => t('Email'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->email);
+
+  $form['store_details']['homepage'] =
+    array('#type' => 'textfield',
+          '#title' => t('Homepage'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->homepage);
+
+
+  $form['store_details']['active'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Active'),
+          '#default_value' => $node->active ? $node->active : TRUE);
+
+  // TODO: Funky placement happens with the "enable rich text"
+  //$form['store_details']['bank_details'] =
+  $form['bank_details'] =
+    array('#type' => 'textarea',
+          '#title' => t('Bank details'),
+          '#rows' => 5,
+          '#default_value' => $node->bank_details);
+
+  $form['terms'] =
+    array('#type' => 'textfield',
+          '#title' => t('Terms (days)'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $node->terms);
+
+  if (module_exists('book')) {
+    if ($node->documentation || !variable_get('erp_store_doc_create', FALSE)) {
+      $book = node_load($node->documentation);
+      $form['store_details']['documentation'] =
+        array('#type' => 'select',
+              '#title' => t('Documentation'),
+              '#options' => book_toc(variable_get('erp_store_doc_book', ''), array(), 2),
+              '#default_value' => $book->book['mlid'],
+              '#description' => t('The documenation for this store.'));
+    }
+  }
+
+  return $form;
+}
+
+/**
+ * The store part of the form which is used to enter various things.
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_store_sub_form($nid) {
+  global $user;
+
+  // See if the node already has a store
+  if ($store = erp_store_get_store($nid)) {
+    $store_id = $store->store_id;
+  }
+  else {
+    // Otherwise, get the store from the customer
+    if ($store = erp_store_get_store($_SESSION['curr_customer'])) {
+      $store_id = $store->store_id;
+    }
+    else {
+      // Otherwise, get it from the user
+      if ($user->erp_store) {
+        $store_id = $user->erp_store;
+      }
+      else {
+        // Oh, for pete's sake, use the default
+        $store_id = variable_get('erp_default_store', '');
+      }
+    }
+  }
+
+  return array('#type' => 'select',
+               '#title' => t('Store'),
+               '#options' => erp_store_list(),
+               '#default_value' => $store_id,
+               '#weight' => -1);
+}
+
+// Helper function to build a list of stores for selection
+function erp_store_list($active_only = TRUE) {
+  $stores = array();
+
+  if ($active_only) {
+    $result = db_query("SELECT n.title, s.store_id FROM {node} n LEFT JOIN {erp_store} s ON n.nid = s.nid WHERE n.type = 'erp_store' AND s.active = 1");
+  }
+  else {
+    $result = db_query("SELECT n.title, s.store_id FROM {node} n LEFT JOIN {erp_store} s ON n.nid = s.nid WHERE n.type = 'erp_store'");
+  }
+
+  while ($row = db_fetch_array($result)) {
+    $stores[$row['store_id']] = $row['title'];
+  }
+  return $stores;
+}
+
+function erp_store_my_selected_stores($store) {
+  global $user;
+
+  if (!$store && (!$user->erp_stores_interested || count($user->erp_stores_interested) == 0)) {
+    $stores = erp_store_list();
+  }
+  else {
+
+    if (!$store) {
+      $store = $user->erp_stores_interested;
+    }
+
+    if (!is_array($store)) {
+      $store = array(0 => $store);
+    }
+    foreach ($store as $store_id) {
+      $store_nid = erp_id_to_nid('store', $store_id);
+      $store_node = node_load($store_nid);
+      $stores[$store_id] = $store_node->title;
+    }
+  }
+
+  return $stores;
+}
+
+function erp_store_insert($node) {
+  // Create store documentation (child book page) as specified in store admin
+  if (variable_get('erp_store_doc_create', TRUE) && user_access('create book content')) {
+    global $user;
+    $book_page->uid = $user->uid;
+    $book_page->name = $user->name;
+    $book_page->type = 'book';
+    $book_page->book['bid'] = variable_get('erp_store_doc_book', '1');
+    $book_page->book['plid'] = variable_get('erp_store_doc_parent', '1');
+    $book_page->title = $node->title;
+    $book_page->body = $node->title . t(' Documentation');
+    $book_page->weight = 0;
+    $book_page->status = 1;
+    $book_page->comment = 2;
+    // TODO Need to link book to customer here
+    node_save($book_page);
+
+    $node->documentation = $book_page->nid;
+  }
+
+  drupal_write_record('erp_store', $node);
+}
+
+function erp_store_update($node) {
+  // Translate the book mlid to a nid
+  $book = book_link_load($node->documentation);
+  $node->documentation = $book['nid'];
+
+  drupal_write_record('erp_store', $node, array('nid'));
+}
+
+function erp_store_delete($node) {
+  db_query('DELETE FROM {erp_store} WHERE nid = %d', $node->nid);
+}
+
+function erp_store_load($node) {
+  $additions = db_fetch_object(db_query('SELECT * FROM {erp_store} WHERE nid = %d', $node->nid));
+
+  return $additions;
+}
+
+/**
+ * Enter description here...
+ *
+ * @param unknown_type $node
+ */
+function erp_store_erp_extra_info($node) {
+  $output = '';
+
+  if ($node->store_id) {
+    $store = erp_store_get_store($node->nid);
+    if ($store) {
+      $output = '<div class="store">';
+      $output .= t('Store: ') . $store->title;
+      $output .= '</div>';
+    }
+  }
+
+  return $output;
+}
+
+function erp_store_erp_customer_info($node) {
+  return erp_store_erp_extra_info($node);
+}
+
+function erp_store_autocomplete($string) {
+  $matches = array();
+  $sql = "SELECT title FROM {node} n WHERE n.type = 'erp_store' AND LOWER(n.title) LIKE LOWER('%%%s%%') ORDER BY n.title ASC ";
+  $sql = db_rewrite_sql($sql);
+  $result = db_query_range($sql, $string, 0, ERP_AUTOCOMPLETE);
+  while ($store = db_fetch_object($result)) {
+    $matches[$store->title] = check_plain($store->title);
+  }
+  print drupal_to_js($matches);
+  exit();
+}
+
+function erp_store_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_store_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function _erp_store_fileobj($node, $id) {
+  if (is_numeric($id) && is_array($node->files)) {
+    $n=1;
+    foreach ($node->files as $file) {
+      if ($n == $id) {
+        return $file;
+      }
+      ++$n;
+    }
+    return NULL;
+  }
+}
+
+function erp_store_erp_store_logo($store) {
+  $erp_store_logo = _erp_store_fileobj($store, 1); //TODO: Make Configurable
+  if (isset($erp_store_logo)) {
+    return file_create_url($erp_store_logo->filepath);
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function erp_store_theme() {
+  return array(
+    'erp_store_logo' => array(
+      'arguments' => array('file' => NULL),
+    ),
+    'erp_store_info' => array(
+      'arguments' => array('node' => NULL),
+    ),
+  );
+}
+
+
+function theme_erp_store_logo($file) {
+  $html .= '<img src="'. file_create_url($file->filepath) .'" class="erp_store_logo" />';
+
+  return $html;
+}
+
+/**
+ * Theme output of store info
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function theme_erp_store_info($node) {
+  $output = '<div class="store-info">';
+
+  // Put the logo at the top right of the screen.
+  $erp_store_logo = _erp_store_fileobj($node, 1); //TODO: Make Configurable.
+  $output .= '<div class="erp-store-logo">';
+  $output .= theme('erp_store_logo', $erp_store_logo);
+  $output .= '</div>';
+
+  $output .= '<div class="store-id">';
+  $output .= t('Store id: ') . $node->store_id;
+  $output .= '</div>';
+
+  $output .= '<div class="active">';
+  if ($node->active) {
+    $output .= t('Active');
+  }
+  else {
+    $output .= t('Inactive');
+  }
+  $output .= '</div>';
+
+  $output .= '<div class="company">';
+  $output .= t('Company: ') . $node->company;
+  $output .= '</div>';
+
+  $output .= '<div class="tax-id">';
+  $output .= t('Tax id: ') . $node->tax_id;
+  $output .= '</div>';
+
+  $output .= '<div class="address">';
+  $output .= t('Address: ') . $node->address;
+  $output .= '</div>';
+
+  $output .= '<div class="suburb">';
+  $output .= t('Suburb: ') . $node->suburb;
+  $output .= '</div>';
+
+  $output .= '<div class="state">';
+  $output .= t('State: ') . $node->state;
+  $output .= '</div>';
+
+  $output .= '<div class="postcode">';
+  $output .= t('Postcode: ') . $node->postcode;
+  $output .= '</div>';
+
+  $output .= '<div class="phone">';
+  $output .= t('Phone: ') . $node->phone;
+  $output .= '</div>';
+
+  $output .= '<div class="fax">';
+  $output .= t('Fax: ') . $node->fax;
+  $output .= '</div>';
+
+  $output .= '<div class="mobile">';
+  $output .= t('Mobile: ') . $node->mobile;
+  $output .= '</div>';
+
+  $output .= '<div class="email">';
+  $output .= t('Email: ') . $node->email;
+  $output .= '</div>';
+
+  $output .= implode(module_invoke_all('erp_store_info', $node));
+
+  $output .= '<div class="homepage">';
+  $output .= t('Homepage: ') . l($node->homepage, $node->homepage);
+  $output .= '</div>';
+
+  $output .= '<div class="bank-details">';
+  $output .= t('Bank Details: ') . $node->bank_details;
+  $output .= '</div>';
+
+  $output .= '<div class="documentation">';
+  if (module_exists('book')) {
+    if ($node->documentation) {
+      $book = node_load($node->documentation);
+      $output .= t('Documentation: ') . l($book->title, 'node/'. $book->nid);
+    }
+  }
+  $output .= '</div>';
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+function erp_store_views_api() {
+  return array('api' => 2.0);
+}
+

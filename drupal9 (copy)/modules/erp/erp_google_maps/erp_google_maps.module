@@ -1,0 +1,167 @@
+<?php
+// $Id: erp_google_maps.module,v 1.9.2.9 2010/02/25 06:02:27 simon Exp $
+
+/**
+ * Help function for google maps_module
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_google_maps_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('erp google maps module.');
+      break;
+    case 'node/add#erp_google_maps':
+      // This description shows up when users click "create content."
+      return t('erp google maps.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * Return whether the user has access to a function or not.
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_google_maps_access($op, $node, $account) {
+  if ($op == 'view') {
+    // Only users with permission to do so may create this node type.
+    return user_access('view erp google map', $account);
+  }
+  return FALSE;
+}
+
+/**
+ * google permissions
+ *
+ * @return unknown
+ */
+function erp_google_maps_perm() {
+  return array(
+    'view erp google map',
+    'admin google maps'
+  );
+}
+
+
+function erp_google_maps_menu() {
+  $items['admin/erp/google_maps'] = array(
+    'title' => 'Google maps',
+    'access arguments' => array('admin google maps'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_google_maps_admin_settings')
+  );
+
+  $items['erp_google_map'] = array(
+    'page callback' => 'erp_google_map_page',
+    'access arguments' => array('view erp google map'),
+    'type' => MENU_CALLBACK
+  );
+
+  return $items;
+}
+
+/**
+ * Function to display a google map for nodes
+ *
+ */
+function erp_google_maps_block($op = 'view') {
+  $matches = array();
+
+  if ($op == 'list') {
+    $blocks[0]['info'] = t('erp Google Map');
+    return $blocks;
+  }
+  // Try to load the customer ID for the node being displayed
+  elseif ($op == 'view' && user_access('view erp google map')) {
+    $node = menu_get_object();
+
+    $block['content'] = _erp_google_maps_show_map($node);
+    $block['subject'] = t('Location');
+    return $block;
+  }
+  return NULL;
+}
+
+/**
+ * show_map will simply add a div in the html, which is then modified by the js and css
+ * (which is added to the head of the document)
+ *
+ */
+function _erp_google_maps_show_map($node) {
+  if (arg(2) == 'edit') {
+    return FALSE;
+  }
+
+  // If no address
+  if (!isset($node->address)) {
+    // Try and use the customer address
+    if ($node->customer_nid) {
+      $node = node_load($node->customer_nid);
+    }
+    else {
+      return FALSE;
+    }
+  }
+
+  $address = $node->address .','. $node->suburb .','. $node->state .','. $node->postcode;
+
+  list($lat, $lon) = erp_google_maps_call_google($address);
+  $text = $node->title;
+  $output = gmap_simple_map($lat, $lon, '', $text, 15);
+
+  return $output;
+}
+
+function erp_google_maps_call_google($address) {
+  if ($address) {
+    $results = drupal_http_request('http://maps.google.com/maps/geo?q='. urlencode($address) .'&output=csv&key='. variable_get('google_maps_key', 0));
+
+    list($result, $accuracy, $lat, $long) = explode(',', $results->data);
+
+    switch ($result) {
+      case '200':
+        return array($lat, $long);
+        break;
+      case '610':
+        drupal_set_message(t('Invalid Google maps API key'));
+        return array($lat, $long);
+        break;
+      default:
+        //drupal_set_message(t('Error getting results for address from Google maps, check the address'));
+        return FALSE;
+        break;
+    }
+  }
+  return FALSE;
+}
+
+
+function erp_google_maps_admin_settings() {
+  drupal_set_title(t('google maps settings'));
+
+  $latlon = erp_google_maps_call_google(variable_get('google_maps_default_search', ''));
+  if ($latlon) {
+    variable_set('google_maps_default_lat_lon', $latlon);
+  }
+
+  $form['google_maps_default_search'] =
+    array('#type' => 'textfield',
+          '#title' => t('Google maps default search address'),
+          '#default_value' => variable_get('google_maps_default_search', ''),
+          '#length' => 60);
+
+  $form['google_maps_default_lat_lon'] =
+    array('#type' => 'textfield',
+          '#title' => t('Default latitude and longitude'),
+          '#default_value' => variable_get('google_maps_default_lat_lon', ''),
+          '#length' => 60);
+
+  return system_settings_form($form);
+}
+

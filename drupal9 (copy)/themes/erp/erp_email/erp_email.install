@@ -1,0 +1,41 @@
+<?php
+
+function erp_email_install() {
+  drupal_install_schema('erp_email');
+  
+  // So if its a new install, mark it as done.
+  db_query("UPDATE {system} SET schema_version = 6001 WHERE name = 'erp_email'");  
+}
+
+function erp_email_schema() {
+  $schema['erp_email'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'format' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'indexes' => array(
+      'nid' => array('nid')),
+  );
+
+  $schema['erp_email_record'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'type' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE),
+      'last_sent' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'disp-width' => '10')),
+  'indexes' => array(
+      'nid' => array('nid')),  
+  );
+  
+  return $schema;
+}
+
+function erp_email_update_6001() {
+	$schema = erp_email_schema();
+
+	$ret = array();
+	
+	db_create_table($ret, 'erp_email_record', $schema['erp_email_record']);
+	
+	return $ret;
+}
+
+

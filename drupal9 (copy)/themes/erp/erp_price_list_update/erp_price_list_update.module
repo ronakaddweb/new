@@ -1,0 +1,1337 @@
+<?php
+// $Id: erp_price_list_update.module,v 1.1.2.13 2011/01/14 00:55:04 simon Exp $
+
+function erp_price_list_update_help($path, $arg) {
+  switch ($path) {
+  case 'admin/help#price_list_update' :
+    return t('ERP item module.');
+    break;
+  case 'node/add#erp_price_list_update':
+    return t('ERP price list update module');
+    break;
+  }
+  return NULL;
+}
+
+/**
+ * Implementation of hook_name().
+ *
+ * Provide the node name hook.
+ */
+function erp_price_list_update_node_name($node) {
+  return t('erp price list update');
+}
+
+/**
+ * Implementation of item_node_info
+ *
+ * @return array of information
+ */
+function erp_price_list_update_node_info() {
+  return array(
+    'erp_price_list_update' => array(
+      'name' => t('erp price list update'),
+      'module' => 'erp_price_list_update',
+      'description' => t('ERP Price list update module'),
+      'title_label' => t('Price list update'),
+      'has_body' => TRUE
+    )
+  );
+}
+
+/**
+ * Implementation of hook_perm().
+ *
+ * Provide permissions
+ */
+function erp_price_list_update_perm() {
+  return array(
+    'add price list update',
+    'edit price list update',
+    'delete from price list update',
+    'process price list update',
+  );
+}
+
+function erp_price_list_update_menu() {
+  $items['node/%node/update-setup'] = array(
+    'title' => 'Setup',
+    'access callback' => 'erp_price_list_update_access',
+    'access arguments' => array(1),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_price_list_update_setup', 1),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 5,
+  );
+
+  $items['erp/price_list_update/%node'] = array(
+    'access arguments' => array('process price list update'),
+    'page callback' => 'erp_price_list_update_process_update_now',
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['erp/price_list_process/%node'] = array(
+    'access arguments' => array('process price list update'),
+    'page callback' => 'erp_price_list_update_update_now',
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+function erp_price_list_update_access($node) {
+  if ($node->type == 'erp_price_list_update') {
+    if (count($node->files) >= 1) {
+      if (user_access('add price list update') || user_access('edit price list update')) {
+        return TRUE;
+      }
+    }
+    else {
+      drupal_set_message(t('You will not be able to configure the fields in this pricelist until a file has been retrieved.'));
+    }
+  }
+  return FALSE;
+}
+
+function erp_price_list_update_set_type($node) {
+  switch ($node->file_type) {
+    case 0:
+      $type = ",";
+      break;
+    case 1:
+      $type = "\t";
+      break;
+    case 2:
+      $type = "|";
+      break;
+
+  }
+  return $type;
+}
+
+/**
+ * Here be dragons
+ *
+ * @param unknown_type $node
+ */
+function erp_price_list_update_setup($form_state, $node) {
+  // Set some defaults if this is a first time through
+  if ($node->header_row == '') {
+    $node->header_row = 0;
+  }
+  if ($node->file_type == '') {
+    $node->file_type = 0;
+  }
+
+  $file = array_pop($node->files);
+  $type = erp_price_list_update_set_type($node);
+
+  // Build a header list for display
+  if (($handle = fopen($file->filepath, "r")) !== FALSE) {
+    for ($i = 0; $i < max(5, ($node->header_row + 5)); $i++) {
+      $data = fgetcsv($handle, 2000, $type);
+      $header_rows[] = array_merge(array($i), $data);
+    }
+    fclose($handle);
+  }
+
+  // Now go through the file to the currently specified row to get headers
+  if (($handle = fopen($file->filepath, "r")) !== FALSE) {
+    for ($i = 0; $i <= $node->header_row; $i++) {
+      $data = fgetcsv($handle, 2000, $type);
+    }
+    fclose($handle);
+  }
+
+  $form['header_list'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Header list'),
+    '#collapsed' => TRUE,
+    '#collapsible' => TRUE,
+  );
+
+  $form['header_list']['details'] = array(
+    '#type' => 'markup',
+    '#value' => theme('table', array(), $header_rows)
+  );
+
+  $form['header_row'] = array(
+    '#type' => 'textfield',
+    '#size' => 2,
+    '#maxlength' => 2,
+    '#title' => t('Enter the row number to be used to select columns (header row)'),
+    '#default_value' => $node->header_row,
+    '#description' => t('Note, if you change his value, click save, then the column fields will be refreshed.'),
+  );
+
+  $form['file_type'] = array(
+    '#type' => 'select',
+    '#title' => t('File type'),
+    '#options' => array(
+      '0' => 'CSV - Comma seperated',
+      '1' => 'TSV - TAB seperated',
+      '2' => 'PIPE - Pipe seperated'
+    ),
+    '#default_value' => $node->file_type,
+  );
+
+  if (is_array($data) && (count($data) > 2)) {
+    for ($col = 0; $col <= count($data); $col++) {
+      if (isset($data[$col])) {
+        $val = $data[$col];
+        $header_row[$col + 1] = $val;
+      }
+    }
+
+    if (is_array($header_row) && count($header_row)) {
+      // Now, display the header list for reviewing
+      $form['columns'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Columns'),
+        '#tree' => TRUE,
+      );
+
+      foreach ($header_row as $col => $val) {
+        $form['columns']['column_'. $col] = array(
+          '#type' => 'select',
+          '#title' => t('Column @number - @value', array('@number' => $col, '@value' => $val)),
+          '#options' => erp_price_list_update_fields(),
+          '#default_value' => $node->assignments[$col],
+        );
+      }
+    }
+    else {
+      $form['columns'] = array(
+        '#type' => 'textfield',
+        '#disabled' => TRUE,
+        '#value' => t('Unable to find headers on that row'),
+      );
+    }
+  }
+  else {
+    drupal_set_message(t('No header row chosen/Unable to find headers with current row, please enter another and save.'));
+  }
+
+  $form['node_nid'] = array(
+    '#type' => 'value',
+    '#value' => $node->nid,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+  );
+
+  return $form;
+}
+
+function erp_price_list_update_fields($field = NULL) {
+  return array(
+    'unused' => t('Unused'),
+    'supp_code' => t('Supplier code'),
+    'barcode' => t('Barcode/UPC/EAN'),
+    'desc1' => t('Description 1'),
+    'desc2' => t('Description 2'),
+    'desc3' => t('Description 3'),
+    'desc4' => t('Description 4'),
+    'buy_price' => t('BUY price'),
+    'rrp_price' => t('RRP price'),
+    'buy_price_ex' => t('BUY price ex'),
+    'rrp_price_ex' => t('RRP price ex'),
+    'category' => t('Category'),
+    'manufacturer' => t('Manufacturer'),
+  );
+}
+
+function erp_price_list_update_setup_submit($form, $form_state) {
+  if ($form_state['values']['op'] == t('Save')) {
+    if (is_array($form_state['values']['columns'])) {
+      foreach ($form_state['values']['columns'] as $var => $value) {
+        if ($value != 'unused') {
+          list($col, $no) = explode('_', $var);
+          $assignments[$no] = $value;
+        }
+      }
+    }
+
+    $node = node_load($form_state['values']['node_nid']);
+    $node->assignments = $assignments;
+    $node->header_row = $form_state['values']['header_row'];
+    $node->file_type = $form_state['values']['file_type'];
+    node_save($node);
+
+    drupal_set_message(t('Price list setup saved.'));
+  }
+}
+
+/**
+ * Provide links for price list updates
+ *
+ * @param unknown_type $type
+ * @param unknown_type $node
+ * @param unknown_type $main
+ * @return unknown
+ */
+function erp_price_list_update_link($type, $node = 0, $main) {
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_supplier') {
+    $links['erp_supplier_add_price_list_update'] = array(
+      'title' => t('add price list update'),
+       'href' => 'node/add/erp-price-list-update/'. $node->nid,
+    );
+  }
+
+  if ($type == 'node' && $node->type == 'erp_price_list_update') {
+    if ($node->assignments) {
+      $links['erp_price_list_update_link_update_now'] = array(
+        'title' => t('update now'),
+        'href' => 'erp/price_list_update/'. $node->nid,
+        'query' => array('destination' => $_GET['q']),
+      );
+    }
+
+    // Once we have an attached file, we can then analyze and set up the actual importing of data.
+    if (is_array($node->files)) {
+      $links['erp_price_list_update_link_process_now'] = array(
+        'title' => t('retrieve now'),
+        'href' => 'erp/price_list_process/'. $node->nid,
+        'query' => array('destination' => $_GET['q']),
+      );
+    }
+
+    $links = array_merge($links, module_invoke_all('erp_price_list_update_link', $node));
+  }
+  return $links;
+}
+
+function erp_price_list_update_erp_supplier_info($node) {
+  $rows = array();
+  $header = array(t('Price list updates'));
+
+  $result = db_query("SELECT * FROM {erp_price_list_update} WHERE supplier_nid = %d", $node->nid);
+  while ($row = db_fetch_array($result)) {
+    $plu_node = node_load($row['nid']);
+    $rows[] = array(l($plu_node->title, 'node/'. $row['nid']));
+  }
+
+  if (count($rows)) {
+    $output = theme('table', $header, $rows);
+    return $output;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function erp_price_list_update_form(&$node, $form_state) {
+  $supplier_nid = arg(3);
+  if (is_numeric($supplier_nid)) {
+    $supplier_node = node_load($supplier_nid);
+    $node->supplier = $supplier_node->title;
+  }
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Price list update description'),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->title,
+    '#required' => TRUE);
+
+  $form['price_list_update']['update_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $node->update_id,
+  );
+
+  $form['price_list_update']['supplier'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Supplier'),
+    '#size' => 20,
+    '#maxlength' => 128,
+    '#autocomplete_path' => 'erp/supplier/autocomplete',
+    '#default_value' => $node->supplier,
+    '#required' => TRUE,
+  );
+
+  $form['price_list_update']['email_settings'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Email settings'),
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+    '#attributes' => array('class' => 'pricelist-settings'),
+  );
+
+  $form['price_list_update']['email_settings']['pricelist_type'] = array(
+    '#type' => 'select',
+    '#title' => t('Pricelist type'),
+    '#options' => erp_price_list_update_types(),
+    '#default_value' => $node->pricelist_type);
+
+  $form['price_list_update']['email_settings']['pricelist_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Pricelist url'),
+    '#size' => 60,
+    '#maxlength' => 255,
+    '#default_value' => $node->pricelist_url);
+
+  $form['price_list_update']['email_settings']['email_server'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email server'),
+    '#size' => 40,
+    '#maxlength' => 128,
+    '#default_value' => $node->email_server,
+  );
+
+  $form['price_list_update']['email_settings']['email_username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email username'),
+    '#size' => 20,
+    '#maxlength' => 128,
+    '#default_value' => $node->email_username,
+  );
+
+  $form['price_list_update']['email_settings']['email_password'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email password'),
+    '#size' => 20,
+    '#maxlength' => 128,
+    '#default_value' => $node->email_password,
+  );
+
+  $form['price_list_update']['email_settings']['email_from_address'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email from address'),
+    '#size' => 20,
+    '#maxlength' => 128,
+    '#default_value' => $node->email_from_address,
+    '#description' => t('This ensures that only email from this suppliers address is processed.')
+  );
+
+  // Put assignments in the form
+  $form['price_list_update']['assignments'] = array(
+    '#type' => 'value',
+    '#value' => $node->assignments,
+  );
+
+  $form['#validate'][] = 'erp_price_list_udpate_custom_validate';
+
+  return $form;
+}
+
+/**
+ * Implementation of hook_validate().
+ */
+function erp_price_list_udpate_custom_validate(&$form, &$form_state) {
+  switch ($form_state['values']['pricelist_type']) {
+    case 1:
+      if (!$form_state['values']['pricelist_url']) {
+        form_set_error('pricelist_url', t('Download update types require a URL.'));
+      }
+      break;
+
+    case 2:
+      if (!$form_state['values']['email_server']
+      && !$form_state['values']['email_username']
+      && !$form_state['values']['email_password']) {
+        form_set_error('email_server', t('You need to enter the email details.'));
+        form_set_error('email_server', t(' '));
+        form_set_error('email_password', t(' '));
+        form_set_error('email_from_address', t(' '));
+      }
+
+      break;
+  }
+}
+
+function erp_price_list_update_types($type = NULL) {
+  $types = array(
+    '1' => 'Excel/CSV Download',
+    '2' => 'Excel/CSV Email',
+    '3' => 'Attached file',
+  );
+
+  if ($type) {
+    return $types[$type];
+  }
+  else {
+    return $types;
+  }
+}
+
+function erp_price_list_update_insert($node) {
+  $supplier = erp_supplier_name_to_node($node->supplier);
+  $node->supplier_nid = $supplier->nid;
+  $node->assignment_list = serialize($node->assignments);
+
+  drupal_write_record('erp_price_list_update', $node);
+}
+
+function erp_price_list_update_update($node) {
+  $supplier = erp_supplier_name_to_node($node->supplier);
+  $node->supplier_nid = $supplier->nid;
+  $node->assignment_list = serialize($node->assignments);
+
+  drupal_write_record('erp_price_list_update', $node, array('update_id'));
+}
+
+function erp_price_list_update_load($node) {
+  $additions = db_fetch_object(db_query('SELECT * FROM {erp_price_list_update} WHERE nid = %d', $node->nid));
+  $supplier = node_load($additions->supplier_nid);
+  $node->supplier = $supplier->title;
+  $node->assignments = unserialize($additions->assignment_list);
+
+  return $additions;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_price_list_update_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_price_list_update_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function erp_price_list_update_theme() {
+  return array(
+    'erp_price_list_update_info' => array(
+      'arguments' => array('node' => NULL),
+    )
+  );
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_price_list_update_info($node) {
+  $type = str_replace('erp_', '', $node->type);
+
+  $output = '';
+
+  $items[] = t('Pricelist update type: @type', array('@type' => erp_price_list_update_types($node->pricelist_type)));
+  $items[] = t('Pricelist update url: @url', array('@url' => $node->pricelist_url));
+  $items[] = t('Pricelist update email server: @server', array('@server' => $node->email_server));
+  $items[] = t('Pricelist update email username: @username', array('@username' => $node->email_username));
+  $items[] = t('Pricelist update email password: @password', array('@password' => $node->email_password));
+  $items[] = t('Pricelist update from address: @address', array('@address' => $node->email_from_address));
+  switch ($node->file_type) {
+    case 0:
+      $file_type = "CSV";
+      break;
+    case 1:
+      $file_type = "TSV";
+      break;
+    case 2:
+      $file_type = "Bar seperated";
+      break;
+  }
+  $items[] = t('Pricelist file type: @type', array('@type' => $file_type));
+  $items[] = t('Pricelist header row: @type', array('@type' => $node->header_row));
+
+  $fieldset = array(
+    '#title' => t('Price list update details'),
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#value' => '<p>'. implode('<br />', $items) .'</p>');
+  $output .= theme('fieldset', $fieldset);
+
+  // Now add the field assignments for info
+  $field_assignments = array();
+  if (is_array($node->assignments) && (count($node->files) >= 1)) {
+    foreach ($node->assignments as $column => $field) {
+      $field_assignments[] = t('Field @column -> @field', array('@column' => $column, '@field' => $field));
+    }
+    if (count($field_assignments)) {
+      $fieldset = array(
+        '#title' => t('Field assignments'),
+        '#collapsible' => FALSE,
+        '#collapsed' => FALSE,
+        '#value' => '<p>'. implode('<br />', $field_assignments) .'</p>');
+      $output .= theme('fieldset', $fieldset);
+    }
+  }
+  elseif (count($node->files) >= 1) {
+    $fieldset = array(
+      '#title' => t('Field assignments'),
+      '#collapsible' => FALSE,
+      '#collapsed' => FALSE,
+      '#value' => l(t('Setup field assignments'), 'node/'. $node->nid .'/update-setup'));
+    $output .= theme('fieldset', $fieldset);
+  }
+
+  $output .= implode(module_invoke_all('erp_extra_info', $node));
+  $output .= implode(module_invoke_all($node->type .'_info', $node));
+
+  return $output;
+}
+
+/**
+ * Recurring function for invoices, creates a new invoice each run
+ *
+ * @param unknown_type $node
+ */
+function erp_price_list_update_recurring($node, $interactive = FALSE) {
+  switch ($node->pricelist_type) {
+    case 1:
+      erp_price_list_update_download($node);
+      break;
+
+    case 2:
+      erp_price_list_update_retrieve_email($node);
+      break;
+  }
+
+  $node->assignments = unserialize($node->assignment_list);
+  if (is_array($node->assignments) && count($node->assignments)) {
+    $output = erp_price_list_update_process_update($node);
+  }
+  if (!$interactive) {
+    watchdog('erp-p-l-update', $output, NULL, WATCHDOG_INFO);
+  }
+  else {
+    return $output;
+  }
+}
+
+function erp_price_list_update_update_now($node) {
+  return erp_price_list_update_recurring($node, TRUE);
+}
+
+function erp_price_list_update_process_update_now($node) {
+  $node->assignments = unserialize($node->assignment_list);
+  if (is_array($node->assignments) && count($node->assignments)) {
+    $output = erp_price_list_update_process_update($node);
+  }
+
+  return $output;
+}
+
+/**
+ * I looked at using Mailhandler, but its always wanting to create nodes and stuff,
+ * so its either do this, or call parts of the mailhandler code seperately. Both
+ * solutions are sub-optimal, would be best to make mailhandler more of an API in
+ * the future
+ *
+ * @param unknown_type $node
+ */
+function erp_price_list_update_retrieve_email($node) {
+  // TODO Support other sorts of email access?
+  $server_spec = '{'. $node->email_server .':110/pop3/notls}';
+  $handle = imap_open($server_spec, $node->email_username, $node->email_password);
+
+  if (!$handle) {
+    watchdog('erp-p-l-update', t('Unable to connect to server @server with @username, @password', array('@server' => $node->email_server, '@username' => $node->email_username, '@password' => $node->email_password)), NULL, WATCHDOG_CRITICAL);
+    return;
+  }
+
+  $list = imap_headers($handle);
+  if (!is_array($list)) {
+    watchdog('erp-p-l-update', t('Unable to list emails'), NULL, WATCHDOG_CRITICAL);
+    return;
+  }
+
+  foreach ($list as $message => $header) {
+    $message++; // The count vs the array value are out of sync
+
+    $header = imap_headerinfo($handle, $message);
+    if ($header->fromaddress == $node->email_from_address) {
+      if (erp_price_list_update_decode_save_file($handle, $message, $node)) {
+        watchdog('erp-p-l-update', t('Deleting message from: %address', array('%addresss' => $header->fromaddress)));
+        imap_delete($handle, $message);
+      }
+    }
+  }
+
+  imap_expunge($handle);
+  imap_close($handle);
+}
+
+function erp_price_list_update_download($node) {
+  $data = drupal_http_request($node->pricelist_url);
+
+  if ($data->code == 200) {
+    // Find the filename in the headers
+    if ($data->headers['Content-Disposition']) {
+      preg_match("/filename=(.*?)$/", $data->headers['Content-Disposition'], $matches);
+      if (is_array($matches) && count($matches)) {
+        $filename = array_pop($matches);
+      }
+    }
+
+    // Grab the filename from the url?
+    if (!$filename) {
+      $filename = substr(strrchr($node->pricelist_url, '/'), 1);
+    }
+
+    // Argh, make our own
+    if (strlen($filename) > 20) {
+      // Filename is long, weird etc. Make up one.
+      $filename = str_replace(' ', '_', $node->title) .'.csv';
+    }
+
+    // Update/unzip/save the file
+    erp_price_list_update_node_file_update($node, $filename, $data->data);
+  }
+}
+
+function erp_price_list_update_decode_save_file($handle, $message, $node) {
+  // Flag so we dont delete unless we save something
+  $saved = FALSE;
+
+  $structure = imap_fetchstructure($handle, $message);
+  $parts = count($structure->parts);
+  switch ($structure->type) {
+  case 1:
+    if ($parts >= 2) {
+      $saved = erp_price_list_update_decode_parts($handle, $message, $parts, $node);
+    }
+    break;
+  }
+
+  return $saved;
+}
+
+function erp_price_list_update_decode_parts($handle, $message, $parts, $node) {
+  $saved = FALSE;
+
+  for ($i = 2; $i <= $parts; $i++) {
+    $attachments[$i] = imap_bodystruct($handle, $message, $i);
+    $filename = $attachments[$i]->parameters[0]->value;
+
+    $saved = erp_price_list_update_node_file_update($node, $filename, imap_base64(imap_fetchbody($handle, $message, $i)));
+  }
+  return $saved;
+}
+
+function erp_price_list_update_node_file_update($node, $filename, $data) {
+  // Build a temporary home
+  $output_dir = file_directory_path() .'/temp';
+  file_check_directory($output_dir, FILE_CREATE_DIRECTORY);
+  $filename = file_munge_filename($filename, 'xls csv');
+  $output_file = $output_dir .'/'. $filename;
+  $final_output_dir = file_directory_path() . '/'. $node->type;
+  file_check_directory($final_output_dir, FILE_CREATE_DIRECTORY);
+  $final_output_file = $final_output_dir .'/'. $filename;
+  file_put_contents($output_file, $data);
+  unset($data);
+
+  // Clear out old files for this node
+  $result = db_query("SELECT * FROM {upload} WHERE vid = %d", $node->vid);
+  while ($file = db_fetch_object($result)) {
+    db_query('DELETE FROM {upload} WHERE fid = %d AND vid = %d', $file->fid, $node->vid);
+
+    // If the file isn't used by any other revisions delete it.
+    $count = db_result(db_query('SELECT COUNT(fid) FROM {upload} WHERE fid = %d', $file->fid));
+    if ($count < 1) {
+      $filepath = db_result(db_query("SELECT filepath FROM {files} WHERE fid = %d", $file->fid));
+      file_delete($filepath);
+      db_query('DELETE FROM {files} WHERE fid = %d', $file->fid);
+    }
+  }
+
+  // If its a zip. grab the contents as the file, not the zip
+  $file_contents = file_get_contents($output_file, FILE_BINARY, NULL, 0, 5);
+  $zip_header = "PK". chr(3) . chr(4) . chr(20);
+  if (stristr($filename, '.zip') && ($file_contents == $zip_header)) {
+    $zip = new ZipArchive;
+    $res = $zip->open($output_file);
+    if ($res === TRUE) {
+      // TODO We only really support the "last" file, so this is a bit dodgy atm.
+      for ($j = 0; $j < $zip->numFiles; $j++) {
+        $filename = $zip->getNameIndex($j);
+        $output_file = $output_dir .'/'. $filename;
+        $data = $zip->getFromIndex($j);
+        $data = erp_price_list_update_sanitize($data);
+        file_put_contents($output_file, $data);
+      }
+    }
+    unset($data);
+  }
+
+  // tar.gz would be chr(31) . chr(139) . chr(8) but that might be the .gz bit, not sure how to detect tar
+
+  // If its an excel sheet, convert it to CSV. Its just easier
+  if (stristr($filename, '.xls')) {
+    // Change the filename to a csv
+    $new_filename = str_replace('.xls', '.csv', strtolower($filename));
+    $new_output_file = $output_dir .'/'. $new_filename;
+
+    // Get xls2csv from - apt-get install catdoc (old - http://search.cpan.org/~ken/)
+    // Old $cmd = "/usr/local/bin/xls2csv -q -x ". escapeshellarg($output_file) ." -c " . escapeshellarg($new_output_file);
+    $cmd = "/usr/bin/xls2csv -x ". escapeshellarg($output_file) ." -f%Y-%m-%d > " . escapeshellarg($new_output_file);
+    $output = system($cmd, $result);
+    if ($result != 0) {
+      watchdog('erp-p-l-update', 'xls2csv failed for '. $output_file .' - '. $output, NULL, WATCHDOG_CRITICAL);
+    }
+    else {
+      $filename = $new_filename;
+      $output_file = $new_output_file;
+    }
+  }
+
+  $final_output_file = $final_output_dir .'/'. $filename;
+
+  // Now copy it to its final resting place - replace, as we only want the latest copy
+  $copy_result = file_copy($output_file, $final_output_file, FILE_EXISTS_REPLACE);
+
+  if ($copy_result) {
+    $saved = TRUE;
+
+    // Save to the files tables
+    $file = new stdClass();
+    $file->filename = $filename;
+    $file->filepath = $output_file;
+    $file->filemime = file_get_mimetype($file->filepath);
+    $file->status = FILE_STATUS_PERMANENT;
+    $file->timestamp = time();
+    $file->filesize = filesize($output_file);
+    drupal_write_record('files', $file);
+
+    // Now attach to our node
+    $upload = new stdClass();
+    $upload->fid = $file->fid;
+    $upload->nid = $node->nid;
+    $upload->vid = $node->vid;
+    $upload->description = $file->filename;
+    $upload->list = variable_get('upload_list_default', 1);
+    drupal_write_record('upload', $upload);
+  }
+
+  return $saved;
+}
+
+function erp_price_list_update_sanitize($data) {
+  $data = preg_replace('/[^('. chr(9) .'-'. chr(127) .')]*/', '', $data);
+  return $data;
+}
+
+function erp_price_list_update_process_update($node) {
+  ini_set("max_execution_time", "1800");  // This can take some time
+
+  // Since we may have just had a new file attached, we need to re-load the node.
+  $node = node_load($node->nid, NULL, TRUE);
+
+  $desc = array();
+
+  // Setup some vars
+  $_SESSION['erp_price_update']['errors'] = 0;
+  $_SESSION['erp_price_update']['warnings'] = 0;
+  $_SESSION['erp_price_update']['stats'] = 0;
+  $_SESSION['erp_price_update']['added'] = 0;
+  $_SESSION['erp_price_update']['updated'] = 0;
+  $_SESSION['erp_price_update']['activated'] = 0;
+  $_SESSION['erp_price_update']['not_at_supplier'] = 0;
+  $_SESSION['erp_price_update']['error_list'] = array();
+  $_SESSION['erp_price_update']['warning_list'] = array();
+  $_SESSION['erp_price_update']['notification_list'] = array();
+
+  $file = array_pop($node->files);
+
+  // Grab 5k of the file for testing
+  $file_contents = file_get_contents($file->filepath, FILE_BINARY, NULL, 0, 5000);
+
+  // As we only work with CSV files, do some checking here to ensure we dont have some sort of binary
+  if (preg_match('/[^'. chr(9) .'-'. chr(127) .']+/', $file_contents)) {
+    $msg = t('Invalid file type (found binary entries in contents) for: '. $file->filename .' when updating: '. $node->title);
+    watchdog('erp-p-l-update', $msg, NULL, WATCHDOG_CRITICAL);
+    drupal_set_message($msg);
+    return;
+  }
+
+  $supplier = node_load($node->supplier_nid);
+
+  erp_price_list_update_item_inactivate($node->supplier_nid);
+
+  $assignments = $node->assignments;
+
+  $line = 0;
+
+  $type = erp_price_list_update_set_type($node);
+
+  if (($handle = fopen($file->filepath, "r")) !== FALSE) {
+    // Skip over headers
+    for ($i = 0; $i <= $node->header_row; $i++) {
+      $data = fgetcsv($handle, 2000, $type);
+      $line++;
+    }
+    while ($data = fgetcsv($handle, 2000, $type)) {
+      $line++;
+      $num = array_pop(array_keys($assignments));
+      foreach ($assignments as $col => $assignment_type) {
+        if ($assignment_type != 'unused') {
+          $value = $data[$col - 1];
+          switch ($assignment_type) {
+            case 'buy_price':
+            case 'rrp_price':
+              $value = preg_replace("/\[.*?\]/", "", $value);
+              $value = round(preg_replace("/[^0-9.]+/", "", $value), 2);
+              break;
+
+            case 'buy_price_ex':
+            case 'rrp_price_ex':
+              $value = preg_replace("/\[.*?\]/", "", $value);
+              $value = preg_replace("/[^0-9.]+/", "", $value);
+              $value = round($value, 2);
+              break;
+
+            case 'desc1':
+            case 'desc2':
+            case 'desc3':
+            case 'desc4':
+              $desc[$assignment_type] = trim(preg_replace("/\n/", " ", $value));
+              $multi_desc = TRUE;
+              break;
+
+            default:
+              // Sanitize value?
+              break;
+          }
+          if (!$multi_desc) {
+            $item_data[$assignment_type] = $value;
+          }
+          else {
+            $multi_desc = FALSE;
+          }
+        }
+      }
+      if (count($desc)) {
+        $item_data['desc'] = $desc['desc1'] .' '. $desc['desc2'] .' '. $desc['desc3'] .' '. $desc['desc4'];
+        $desc = array();
+      }
+      $item_data['line'] = $line;
+
+      $status = erp_price_list_update_item_check_update($node, $item_data);
+    }
+    fclose($handle);
+  }
+
+  // If there is any thing in stock and not sold, they definitely need to be marked active,
+  // whether still available from the supplier or not
+  if (module_exists('erp_stock')) {
+    erp_price_list_update_item_activate_stock($node->supplier_nid);
+  }
+
+  // The output from the cron is horrible with the fieldsets etc, take them out for now,
+  // Maybe add them back if we could tell if its manualyl run?
+  if (FALSE) {
+    $rows[] = array(t('Errors: @errors', array('@errors' => $_SESSION['erp_price_update']['errors'])));
+    $rows[] = array(t('Warnings: @errors', array('@errors' => $_SESSION['erp_price_update']['warnings'])));
+    $rows[] = array(t('Added: @errors', array('@errors' => $_SESSION['erp_price_update']['added'])));
+    $rows[] = array(t('Updated: @errors', array('@errors' => $_SESSION['erp_price_update']['updated'])));
+    $rows[] = array(t('Activated: @errors', array('@errors' => $_SESSION['erp_price_update']['activated'])));
+    $rows[] = array(t('No longer at supplier: @errors', array('@errors' => $_SESSION['erp_price_update']['not_at_supplier'])));
+
+    $fieldset = array(
+      '#title' => t('Supplier details'),
+      '#collapsible' => FALSE,
+      '#value' => '<p>'. t('Supplier: ') . $supplier->title ."</p>\n<p>". t('Supplier Id: ') . $supplier->supplier_id ."</p>\n",
+    );
+    $output = theme('fieldset', $fieldset);
+
+    $fieldset = array(
+      '#title' => t('Statistics'),
+      '#collapsible' => FALSE,
+      '#value' => theme('table', array(), $rows));
+    $output .= theme('fieldset', $fieldset);
+    $rows = array();
+
+    foreach ($_SESSION['erp_price_update']['error_list'] as $error) {
+      $rows[] = array($error['line'] .' - '. $error['field'] .' - '. $error['error']);
+    }
+    if (count($rows)) {
+      $fieldset = array(
+        '#title' => t('Errors'),
+        '#collapsible' => TRUE,
+        '#collapsed' => (count($rows) ? FALSE : TRUE),
+        '#value' => theme('table', array(), $rows));
+      $output .= theme('fieldset', $fieldset);
+    }
+    $rows = array();
+
+    foreach ($_SESSION['erp_price_update']['warning_list'] as $error) {
+      $rows[] = array($error['line'] .' - '. $error['field'] .' - '. $error['error']);
+    }
+    if (count($rows)) {
+      $fieldset = array(
+        '#title' => t('Warnings'),
+        '#collapsible' => FALSE,
+        '#collabsed' => TRUE,
+        '#value' => theme('table', array(), $rows));
+      $output .= theme('fieldset', $fieldset);
+    }
+    $rows = array();
+
+    foreach ($_SESSION['erp_price_update']['notification_list'] as $error) {
+      $rows[] = array($error['line'] .' - '. $error['field'] .' - '. $error['error']);
+    }
+    if (count($rows)) {
+      $fieldset = array(
+        '#title' => t('Notifications'),
+        '#collapsible' => FALSE,
+        '#collabsed' => TRUE,
+        '#value' => theme('table', array(), $rows));
+      $output .= theme('fieldset', $fieldset);
+    }
+    $rows = array();
+
+    // Remove all session vars
+    unset($_SESSION['erp_price_update']);
+  }
+  else {
+    $output .= '<p>'. t('Supplier: ') . $supplier->title ."</p>\n<p>". t('Supplier Id: ') . $supplier->supplier_id ."</p>\n";
+    $output .= '<p>';
+    $output .= t('Errors: @errors', array('@errors' => $_SESSION['erp_price_update']['errors']));
+    $output .= "</p>\n<p>";
+    $output .= t('Warnings: @errors', array('@errors' => $_SESSION['erp_price_update']['warnings']));
+    $output .= "</p>\n<p>";
+    $output .= t('Added: @errors', array('@errors' => $_SESSION['erp_price_update']['added']));
+    $output .= "</p>\n<p>";
+    $output .= t('Updated: @errors', array('@errors' => $_SESSION['erp_price_update']['updated']));
+    $output .= "</p>\n<p>";
+    $output .= t('Activated: @errors', array('@errors' => $_SESSION['erp_price_update']['activated']));
+    $output .= "</p>\n<p>";
+    $output .= t('No longer at supplier: @errors', array('@errors' => $_SESSION['erp_price_update']['not_at_supplier']));
+    $output .= "</p>\n<p>";
+    foreach ($_SESSION['erp_price_update']['error_list'] as $error) {
+      $output .= $error['line'] .' - '. $error['field'] .' - '. $error['error'] ."<br />\n";
+    }
+    foreach ($_SESSION['erp_price_update']['warning_list'] as $error) {
+      $output .= $error['line'] .' - '. $error['field'] .' - '. $error['error'] ."<br />\n";
+    }
+    foreach ($_SESSION['erp_price_update']['notification_list'] as $error) {
+      $output .= $error['line'] .' - '. $error['field'] .' - '. $error['error'] ."<br />\n";
+    }
+
+    // Remove all session vars
+    unset($_SESSION['erp_price_update']);
+  }
+
+  return $output;
+}
+
+function erp_price_list_update_item_check_update($update_node, $item) {
+  static $manufacturer_tid;
+  static $manufacturers;
+  static $category_tid;
+  static $erp_item_markup;
+  static $supplier;
+
+  $errors = $warnings = $notifications = array();
+
+  $supplier = node_load($update_node->supplier_nid);
+
+  if (!$manufacturer_tid || !$category_tid || !$erp_item_markup) {
+    $manufacturer_tid = variable_get('erp_item_manufacturer_tid', FALSE);
+    $category_tid = variable_get('erp_item_category_tid', FALSE);
+    $erp_item_markup = variable_get('erp_item_markup', '');
+    $manufacturers = _erp_price_list_update_item_get_terms($manufacturer_tid);
+  }
+
+  $item_terms = '';
+
+  $update_required = FALSE;
+
+  // Check for blank required fields
+  if ((strlen($item['supp_code']) > 128) or (strlen($item['supp_code']) < 3)) {
+    //$errors[] = array('line' => $item['line'], 'field' => 'supp_code', 'error' => t('@type cannot be to small or too large', array('@type' => 'supp_code')));
+    // Dont even try any further
+    $_SESSION['erp_price_update']['errors']++;
+    $_SESSION['erp_price_update']['error_list'] = array_merge($_SESSION['erp_price_update']['error_list'], $errors);
+    return FALSE;
+  }
+  if (strlen($item['desc']) < 1) {
+    $errors[] = array('line' => $item['line'], 'field' => 'desc', 'error' => t('@type cannot be to small or too large', array('@type' => 'desc')));
+    // Dont even try any further
+    $_SESSION['erp_price_update']['errors']++;
+    $_SESSION['erp_price_update']['error_list'] = array_merge($_SESSION['erp_price_update']['error_list'], $errors);
+    return FALSE;
+  }
+
+  // Check to see if we can make the ex prices fields. buy/rrp is what we want.
+  if (!$item['buy_price_ex']) {
+    if (!$item['buy_price']) {
+      // Buy price can be blank, but warn the user
+      $warnings[] = array('line' => $item['line'], 'field' => 'price', 'error' => t('@type not specified, sell will be RRP', array('@type' => 'buy_price')));
+      $_SESSION['erp_price_update']['warnings']++;
+    }
+  }
+  else {
+    if (!$item['buy_price']) {
+      $item['buy_price'] = array_pop(module_invoke_all('erp_tax_inc_amount', $item['buy_price_ex']));
+    }
+  }
+
+  if (!$item['rrp_price_ex']) {
+    if (!$item['rrp_price']) {
+      if (!$item['buy_price']) { // Will be set by now if its there in _ex
+        $errors[] = array('line' => $item['line'], 'field' => 'rrp_price', 'error' => t('@type not specified can\'t work out a price', array('@type' => 'rrp_price')));
+        $_SESSION['erp_price_update']['errors']++;
+      }
+    }
+  }
+  else {
+    $item['rrp_price'] = array_pop(module_invoke_all('erp_tax_inc_amount', $item['rrp_price_ex']));
+  }
+
+  if (($item['rrp_price'] <= 0) && ($item['rrp_price_ex'] <= 0) && ($item['buy_price_ex'] <= 0) && ($item['buy_price'] <= 0)) {
+    $errors[] = array('line' => $item['line'], 'field' => 'price', 'error' => t('All prices are below zero', array('@line' => $item['line'])));
+    $_SESSION['erp_price_update']['errors']++;
+    $_SESSION['erp_price_update']['error_list'] = array_merge($_SESSION['erp_price_update']['error_list'], $errors);
+    return FALSE;
+  }
+
+  if ($item['buy_price'] && $item['rrp_price']) {
+    $item['sell_price'] = round(min(($item['buy_price'] * $erp_item_markup), $item['rrp_price']), 2);
+  }
+  elseif ($item['rrp_price']) {
+    $item['sell_price'] = round($item['rrp_price'], 2);
+  }
+  else {
+    $item['sell_price'] = ($item['buy_price'] * $erp_item_markup);
+  }
+
+  if (!count($errors)) {
+    $nid = erp_item_locate($supplier->supplier_id, $item['supp_code'], TRUE);
+
+    if ($nid) {
+      // The node already exists. Load it and check for field updates
+      $node = node_load($nid, NULL, TRUE); // Stop node caching to conserve RAM
+
+      // If the item node is "locked", just return
+      if ($node->item_locked) {
+        $notifications[] = array('line' => $item['line'], 'field' => 'price_update', 'error' => t('Locked item !code not updated', array('!code' => l($item['supp_code'], 'node/'. $nid))));
+        $update_required = FALSE;
+      }
+      else {
+        // As we work in "inc" for the import, we need to add tax to the node records
+        $node->rrp_price = array_pop(module_invoke_all('erp_tax_inc_amount', $node->rrp_price));
+        $node->buy_price = array_pop(module_invoke_all('erp_tax_inc_amount', $node->buy_price));
+        $node->sell_price = array_pop(module_invoke_all('erp_tax_inc_amount', $node->sell_price));
+
+        $node->supplier_nid = $supplier->nid;
+
+        if ($node->title != $item['desc']) {
+          // title updated
+          $node->title = $item['desc'];
+          $node->full_desc = $item['desc'];
+          $update_required = TRUE;
+        }
+        if (bccomp($node->buy_price, $item['buy_price'])) {
+          // buy price updated
+          $notifications[] = array('line' => $item['line'], 'field' => 'price_update', 'error' => t('Updating BUY price for !code from @old to @new', array('!code' => l($item['supp_code'], 'node/'. $nid), '@old' => $node->buy_price, '@new' => $item['buy_price'])));
+          $node->buy_price = $item['buy_price'];
+          $update_required = TRUE;
+        }
+        if (bccomp($node->rrp_price, $item['rrp_price'])) {
+          // rrp price updated
+          $notifications[] = array('line' => $item['line'], 'field' => 'price_update', 'error' => t('Updating RRP price for !code from @old to @new', array('!code' => l($item['supp_code'], 'node/'. $nid), '@old' => $node->rrp_price, '@new' => $item['rrp_price'])));
+          $node->rrp_price = $item['rrp_price'];
+          $update_required = TRUE;
+        }
+        if (bccomp($node->sell_price, $item['sell_price'])) {
+          // sell price updated
+          $notifications[] = array('line' => $item['line'], 'field' => 'price_update', 'error' => t('Updating SELL price for !code from @old to @new', array('!code' => l($item['supp_code'], 'node/'. $nid), '@old' => $node->sell_price, '@new' => $item['sell_price'])));
+          $node->sell_price = $item['sell_price'];
+          $update_required = TRUE;
+        }
+        if (isset($item['barcode']) && $node->barcode != $item['barcode']) {
+          // barcodee updated
+          $notifications[] = array('line' => $item['line'], 'field' => 'barcode_update', 'error' => t('Updating barcode !code from @old to @new', array('!code' => l($item['supp_code'], 'node/'. $nid), '@old' => $node->barcode, '@new' => $item['barcode'])));
+          $node->barcode = $item['barcode'];
+          $update_required = TRUE;
+        }
+      }
+    }
+    else {
+      $node = '';
+
+      $node->uid = $user->uid;
+      $node->type = 'erp_item';
+      $node->status = 1;
+      $node->title = $item['desc'];
+      $node->full_desc = $item['desc'];
+      $node->code = $item['supp_code'];
+      $node->supp_code = $item['supp_code'];
+      $node->buy_price = $item['buy_price'];
+      $node->rrp_price = $item['rrp_price'];
+      $node->sell_price = $item['sell_price'];
+      $node->barcode = $item['barcode'];
+      $node->supplier_nid = $supplier->nid;
+
+      $update_required = TRUE;
+    }
+
+    $node->tax_ex = FALSE;
+    $node->active = 1;
+    $node->item_type = t('stock item');
+
+    // If its a new node, try and figure out categories
+    if (!$node->nid) {
+      unset($node->taxonomy);
+
+      if (($item['category'] != '') && $category_tid) {
+        $node->taxonomy['tags'][$category_tid] = $item['category'];
+      }
+
+      if (!isset($node->taxonomy['tags'][$category_tid])) {
+        $node->taxonomy['tags'][$category_tid] = 'Uncategorised';
+      }
+
+      if ($item['manufacturer'] && $manufacturer_tid) {
+        $node->taxonomy['tags'][$manufacturer_tid] = $item['manufacturer'];
+      }
+      else {
+        // Try and figure it out
+        foreach ($manufacturers as $tid => $manu) {
+          // Find terms
+          if (preg_match('/^'. $manu->description .' /i', $node->title)) {
+            $item_terms[] = $manu->description;
+          }
+
+          // Find synonyms
+          foreach ($manu->synonyms as $synonyms) {
+            if (preg_match('/^'. $synonyms .' /i', $node->title)) {
+              $item_terms[] = $manu->description;
+            }
+          }
+
+          // Remove duplicates
+          if (is_array($item_terms)) {
+            $item_terms = array_unique($item_terms);
+            // Set the terms
+            $node->taxonomy['tags'][$manufacturer_tid] = implode(',', $item_terms);
+          }
+        }
+
+        // Default to Unknown
+        if (!isset($node->taxonomy['tags'][$manufacturer_tid])) {
+          $node->taxonomy['tags'][$manufacturer_tid] = 'Unknown';
+        }
+      }
+    }
+
+    if ($update_required) {
+      if (!$node->nid) {
+        // New node
+        node_save($node);
+        $notifications[] = array('line' => $item['line'], 'field' => 'new_item', 'error' => t('Added new item !code', array('!code' => l($item['supp_code'], 'node/'. $node->nid))));
+        $_SESSION['erp_price_update']['added']++;
+      }
+      else {
+        // Submit the updated node
+        node_save($node);
+        $_SESSION['erp_price_update']['updated']++;
+      }
+    }
+    else {
+      if (!$node->item_locked) {
+        // Still have to set it active, as the supplier hasit in their list
+        db_query("UPDATE {erp_item} SET active = 1 WHERE nid = %d", $nid);
+        $_SESSION['erp_price_update']['activated']++;
+      }
+    }
+
+    if (count($warnings)) {
+      $_SESSION['erp_price_update']['warning_list'] = array_merge($_SESSION['erp_price_update']['warning_list'], $warnings);
+    }
+
+    if (count($notifications)) {
+      $_SESSION['erp_price_update']['notification_list'] = array_merge($_SESSION['erp_price_update']['notification_list'], $notifications);
+    }
+
+    return TRUE;
+  }
+  else {
+    if (count($errors)) {
+      $_SESSION['erp_price_update']['error_list'] = array_merge($_SESSION['erp_price_update']['error_list'], $errors);
+    }
+    if (count($warnings)) {
+      $_SESSION['erp_price_update']['warning_list'] = array_merge($_SESSION['erp_price_update']['warning_list'], $warnings);
+    }
+    if (count($notifications)) {
+      $_SESSION['erp_price_update']['notification_list'] = array_merge($_SESSION['erp_price_update']['notification_list'], $notifications);
+    }
+
+    return FALSE;
+  }
+}
+
+function _erp_price_list_update_item_get_terms($vid) {
+  static $terms = FALSE;
+
+  if ($terms === FALSE) {
+    $terms = $synonyms = array();
+
+    $synonyms = _erp_price_list_update_item_get_synonyms($vid);
+
+    // Get all glossary terms and attach synonyms.
+    // omit terms without a description. those are usually container terms.
+    $result = db_query("SELECT name, description, tid as nodes FROM {term_data} WHERE vid = %d ORDER BY name ASC", $vid);
+    while ($term = db_fetch_object($result)) {
+      if ($term->description) {
+        $term->synonyms = $synonyms[$term->tid];
+        $term->synonyms[] = $term->name;
+        $term->vid = $vid;
+        $terms[] = $term;
+      }
+    }
+  }
+
+  return $terms;
+}
+
+function _erp_price_list_update_item_get_synonyms($vid) {
+  $result = db_query("SELECT ts.tid, ts.name FROM {term_synonym} ts, {term_data} t WHERE ts.tid = t.tid AND t.vid = %d", $vid);
+  while ($synonym = db_fetch_object($result)) {
+    $synonyms[$synonym->tid][] = $synonym->name;
+  }
+  return $synonyms;
+}
+
+function _erp_price_list_update_item_get_vocabularies() {
+  $vocabulary[0] = '<'. t('none') .'>';
+  $vocabularies = taxonomy_get_vocabularies('erp_item');
+  while ($vocab = array_pop($vocabularies)) {
+    $vocabulary[$vocab->vid] = $vocab->name;
+  }
+  return $vocabulary;
+}
+
+
+/**
+ * Set all non-service items and unlocked items to inactive
+ *
+ */
+function erp_price_list_update_item_inactivate($supplier_nid) {
+  // If a supplier is passed, only inactivate for that one.
+  $sql = "UPDATE {erp_item} SET active = 0 WHERE item_type = '". t('stock item') ."' AND item_locked <> '1' AND supplier_nid = %d";
+  db_query($sql, $supplier_nid);
+}
+
+function erp_price_list_update_item_activate_stock($supplier_nid) {
+  $result = db_query("SELECT DISTINCT(stock_nid) FROM {erp_stock} es INNER JOIN {erp_item} ei ON es.stock_nid = ei.nid WHERE ei.supplier_nid = %d AND sell_date = 0", $supplier_nid);
+  while ($row = db_fetch_array($result)) {
+    $node = node_load($row['stock_nid'], NULL, TRUE); // Have to pass "reset", or we get the cached node!
+    if (!$node->active) {
+      $_SESSION['erp_price_update']['activated']++;
+      $_SESSION['erp_price_update']['not_at_supplier']++;
+      $node->active = 1;
+      node_save($node);
+    }
+  }
+}

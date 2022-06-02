@@ -1,0 +1,712 @@
+<?php
+// $Id: erp_reports.module,v 1.6.2.11 2011/01/14 00:55:04 simon Exp $
+
+function erp_reports_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    return t('ERP management reports module.');
+    break;
+  }
+}
+
+function erp_reports_perm() {
+  return array('access user reports', 'access management reports', 'admin management reports');
+}
+
+function erp_reports_menu() {
+  $items['admin/erp/reports'] = array(
+    'title' => t('Reports'),
+    'access arguments' => array('admin management reports'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_reports_admin_settings')
+  );
+
+  $items['erp/reports'] = array(
+    'title' => 'Reports',
+    'access arguments' => array('access user reports'),
+    'page callback' => 'erp_reports_summary'
+  );
+
+  $items['erp/reports/item_breakdown'] = array(
+    'title' => 'Sales by item breakdown',
+    'access arguments' => array('access management reports'),
+    'page callback' => 'erp_reports_item_breakdown'
+  );
+
+  $items['erp/reports/employee_breakdown'] = array(
+    'title' => 'Sales by employee',
+    'access arguments' => array('access management reports'),
+    'page callback' => 'erp_reports_employee_breakdown'
+  );
+
+  $items['erp/reports/employee_item_breakdown'] = array(
+    'title' => 'Employee sales by item',
+    'access arguments' => array('access management reports'),
+    'page callback' => 'erp_reports_employee_sales_by_item'
+  );
+
+  $items['erp/reports/store_breakdown'] = array(
+    'title' => 'Sales by store',
+    'access arguments' => array('access management reports'),
+    'page callback' => 'erp_reports_store_breakdown'
+  );
+
+  $items['erp/reports/store_item_breakdown'] = array(
+    'title' => 'Store sales by item',
+    'access arguments' => array('access management reports'),
+    'page callback' => 'erp_reports_store_sales_by_item'
+  );
+
+  $items['erp/reports/employee_billed_labour'] = array(
+    'title' => 'Employee billed labour',
+    'access arguments' => array('access user reports'),
+    'page callback' => 'erp_reports_employee_billed_labour'
+  );
+
+  return $items;
+}
+
+function erp_reports_admin_settings() {
+  $form['erp_reports_labour_nids'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Node ids for labour related reports'),
+    '#description' => t('Enter node ids seperated by a comma'),
+    '#default_value' => variable_get('erp_reports_labour_nids', '304131, 199965, 129864, 199866')
+  );
+
+  $form['erp_reports_discount_nids'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Node ids for discount labour related reports'),
+    '#description' => t('Enter node ids seperated by a comma'),
+    '#default_value' => variable_get('erp_reports_discount_nids', '')
+  );
+
+  return system_settings_form($form);
+}
+
+function erp_reports_summary() {
+  drupal_set_message(t('Choose a report'));
+  return '';
+}
+
+function erp_reports_item_breakdown() {
+  $result = db_query(
+    "SELECT id.item_nid, COUNT(id.item_nid) AS num, no.title, SUM(id.qty) AS qty, SUM(id.price) AS sales ".
+    "FROM {erp_invoice_data} id ".
+    "INNER JOIN node no ON id.item_nid = no.nid ".
+    "INNER JOIN erp_invoice i ON id.nid = i.nid ".
+    "INNER JOIN node n ON i.nid = n.nid ".
+    "GROUP BY id.item_nid ".
+    "ORDER BY sales DESC");
+
+  while ($row = db_fetch_object($result)) {
+    $rows[] = array(array('data' => l($row->title, "node/$row->item_nid"),
+                          'class' => 'erp-item-title'),
+                    array('data' => $row->num,
+                          'class' => 'erp-item-num'),
+                    array('data' => $row->qty,
+                          'class' => 'erp-item-qty'),
+                    array('data' => erp_currency($row->sales),
+                          'class' => 'erp-item-sales'));
+  }
+
+  $header = array(t('Item'), t('Num sold'), t('Qty'), t('Sales'));
+
+  $html = theme('table', $header, $rows);
+
+  return $html;
+}
+
+function erp_reports_employee_billed_labour() {
+  $months = array();
+  $discount_months = array();
+
+  $labour_nids = explode(',', variable_get('erp_reports_labour_nids', ''));
+  if (!count($labour_nids)) {
+    drupal_set_message(t('No nids specified in %url, please resolve', array('%url' => l('admin/erp/reports', 'Reports'))));
+    return;
+  }
+  else {
+    $labour_where = " ei.nid = ". implode(" OR ei.nid = ", $labour_nids);
+  }
+
+  $discount_nids = explode(',', variable_get('erp_reports_discount_nids', ''));
+  $discount_where = "(ei.nid = ". implode(" OR ei.nid = ", $discount_nids) .") AND ";
+
+  $year = isset($_GET['year']) && is_numeric($_GET['year']) ? $_GET['year'] : (date('n', mktime()) < 7 ? date('Y', mktime())-1 : date('Y', mktime()));
+
+  for ($mon = 7; $mon < 19; $mon++) {
+
+    $start_month = mktime(0, 0, 0, $mon, 0, $year); // Midnight, end of prev month
+    $end_month = mktime(0, 0, 0, $mon + 1, 0, $year); // Midnight, end of this month
+
+    $start_month -= erp_get_timezone();
+    $end_month -= erp_get_timezone();
+
+    $where = "n.created >= $start_month AND n.created < $end_month";
+
+    $result = db_query("SELECT sum(id.qty) as total, u.uid as uid, u.name as name
+      FROM erp_item ei
+      inner join erp_invoice_data id on id.item_nid = ei.nid
+      inner JOIN erp_invoice i ON id.nid = i.nid
+      inner JOIN node n ON i.nid = n.nid
+      inner JOIN users u ON n.uid = u.uid
+      WHERE (%s) AND (%s)
+      GROUP BY u.uid
+      ORDER BY u.name ASC", $labour_where, $where
+    );
+
+    while ($row = db_fetch_object($result)) {
+      $months[$row->name][$mon] = $row;
+    }
+
+    $result = db_query("SELECT sum(id.qty) as total, u.uid as uid, u.name as name
+      FROM erp_item ei
+      inner join erp_invoice_data id on id.item_nid = ei.nid
+      inner JOIN erp_invoice i ON id.nid = i.nid
+      inner JOIN node n ON i.nid = n.nid
+      inner JOIN users u ON n.uid = u.uid
+      WHERE %s (%s)
+      GROUP BY u.uid
+      ORDER BY u.name ASC", $discount_where, $where
+    );
+
+    while ($row = db_fetch_object($result)) {
+      $discount_months[$row->name][$mon] = $row;
+    }
+  }
+
+  $rows = array();
+  $total_months = array();
+
+  if (isset($months)) {
+    foreach ($months as $user => $month) {
+
+      $total = 0;
+
+      $row = array(
+        array(
+          'data' => $user,
+          'class' => 'erp-item-title'
+        )
+      );
+      for ($m = 7; $m < 19; $m++) {
+        //print "<p>". print_r($discount_months[$user], TRUE) ."</p>";
+        $row[] = array(
+          'data' => $month[$m]->total,
+          'class' => 'erp-item-sales'
+        );
+        $row[] = array(
+          'data' => ($discount_months[$user][$m]->total ? "(". $discount_months[$user][$m]->total .")" : ''),
+          'class' => 'erp-item-discount'
+        );
+        $total += $month[$m]->total - $discount_months[$user][$m]->total;
+        $total_months[$m] += $month[$m]->total - $discount_months[$user][$m]->total;
+      }
+
+      $row[] = array(
+        'data' => '<b>'. ($total ? $total : 0) .'</b>',
+        'class' => 'erp-item-sales'
+      );
+
+      $rows[] = $row;
+    }
+  }
+
+  $row = array();
+  $row[] = array('data' => 'Totals');
+  foreach ($total_months as $month => $amount) {
+    if ($amount > 0) {
+      if ($month > 12) {
+        $row[] = array('data' => $amount);
+      }
+      else {
+        $row[] = array('data' => $amount);
+      }
+    }
+    else {
+      $row[] = array('data' => 0);
+    }
+    $row[] = '';
+    $grandtotal += $amount;
+  }
+  $row[] = array(
+    'data' => '<b>'. ($grandtotal ? $grandtotal : 0) .'</b>',
+    'class' => 'erp-item-sales'
+  );
+  $rows[] = $row;
+
+  $html = l('prev year', $_GET['q'], array('attributes' => NULL, 'query' => 'year='. ($year - 1))) ." <b>$year/". ($year+1) ."</b> ";
+  $html .= l('next year', $_GET['q'], array('attributes' => NULL, 'query' => 'year='. ($year + 1)));
+
+  $header[] = t('Employee');
+  for ($j = 7; $j < 19; $j++) {
+    $header[] = array('data' => t(date("F", mktime(0, 0, 0, $j, 1, 2000))), 'colspan' => 2);
+  }
+  $header[] = t('Total');
+
+  $html .= theme('table', $header, $rows);
+
+  return $html;
+}
+
+function erp_reports_employee_breakdown() {
+  $year = isset($_GET['year']) && is_numeric($_GET['year']) ? $_GET['year'] : (date('n', mktime()) < 7 ? date('Y', mktime())-1 : date('Y', mktime()));
+
+  for ($mon = 7; $mon < 19; $mon++) {
+
+    $start_month = mktime(0, 0, 0, $mon, 0, $year); // Midnight, end of prev month
+    $end_month = mktime(0, 0, 0, $mon + 1, 0, $year); // Midnight, end of this month
+
+    $start_month -= erp_get_timezone();
+    $end_month -= erp_get_timezone();
+
+    $where = "WHERE n.created >= $start_month
+              AND n.created < $end_month";
+
+    $result = db_query("SELECT SUM(i.total) AS sales, u.uid as uid, u.name as name
+      FROM {erp_invoice} i
+      INNER JOIN {node} n ON i.nid = n.nid
+      INNER JOIN {users} u ON u.uid = n.uid
+      ". $where ."
+      GROUP BY u.uid
+      ORDER BY u.name ASC"
+    );
+
+    while ($row = db_fetch_object($result)) {
+      $months[$row->name][$mon] = $row;
+    }
+  }
+
+  $rows = array();
+  $total_months = array();
+
+  if (isset($months)) {
+    foreach ($months as $user => $month) {
+
+      $total = 0;
+
+      $row = array(array('data' => $user,
+                   'class' => 'erp-item-title'));
+      for ($m=7; $m < 19; $m++) {
+        if ($month[$m]->sales) {
+          if ($m > 12) {
+            $sales_link = l(erp_currency($month[$m]->sales), 'erp/reports/employee_item_breakdown', array('attributes' => NULL, 'query' => 'year='. ($year + 1) .'&month='. ($m - 12) .'&user='. $user));
+          }
+          else {
+            $sales_link = l(erp_currency($month[$m]->sales), 'erp/reports/employee_item_breakdown', array('attributes' => NULL, 'query' => 'year='. $year .'&month='. $m .'&user='. $user));
+          }
+        }
+        else {
+          $sales_link = 0;
+        }
+        $row[] = array('data' => $sales_link,
+                       'class' => 'erp-item-sales');
+        $total += $month[$m]->sales;
+        $total_months[$m] += $month[$m]->sales;
+      }
+
+      $row[] = array('data' => '<b>'. ($total ? erp_currency($total) : 0) .'</b>',
+                     'class' => 'erp-item-sales');
+
+      $rows[] = $row;
+    }
+  }
+
+  $row = array();
+  $row[] = array('data' => 'Totals');
+  foreach ($total_months as $month => $amount) {
+    if ($amount > 0) {
+      if ($month > 12) {
+        $row[] = array('data' => l(erp_currency($amount), 'erp/reports/employee_item_breakdown', array('attributes' => NULL, 'query' => 'year='. ($year + 1) .'&month='. ($month - 12))), 'class' => 'erp-item-sales');
+      }
+      else {
+        $row[] = array('data' => l(erp_currency($amount), 'erp/reports/employee_item_breakdown', array('attributes' => NULL, 'query' => 'year='. ($year) .'&month='. $month)), 'class' => 'erp-item-sales');
+      }
+    }
+    else {
+      $row[] = array('data' => 0);
+    }
+    $grandtotal += $amount;
+  }
+  $row[] = array('data' => '<b>'. ($grandtotal ? erp_currency($grandtotal) : 0) .'</b>',
+                 'class' => 'erp-item-sales');
+  $rows[] = $row;
+
+  $html = l('prev year', $_GET['q'], array('attributes' => NULL, 'query' => 'year='. ($year - 1))) ." <b>$year/". ($year+1) ."</b> ";
+  $html .= l('next year', $_GET['q'], array('attributes' => NULL, 'query' => 'year='. ($year + 1)));
+
+  $header[] = t('Employee');
+  for ($j=7; $j<19; $j++) {
+    $header[] = t(date("F", mktime(0, 0, 0, $j, 1, 2000)));
+  }
+  $header[] = t('Total');
+
+  $html .= theme('table', $header, $rows);
+
+  return $html;
+}
+
+function erp_reports_employee_sales_by_item() {
+  if (!$year = $_GET['year']) {
+    $year = date('Y');
+  }
+  if (!$mon = $_GET['month']) {
+    $mon = date('m');
+  }
+
+  // Figure out months etc for links
+  if ($mon == 12) {
+    $next_mon = 1;
+    $next_year = $year + 1;
+  }
+  else {
+    $next_mon = $mon + 1;
+    $next_year = $year;
+  }
+  if ($mon == 1) {
+    $prev_mon = 12;
+    $prev_year = $year - 1;
+  }
+  else {
+    $prev_mon = $mon - 1;
+    $prev_year = $year;
+  }
+
+  $start_month = mktime(0, 0, 0, $mon, 0, $year); // Midnight, end of prev month
+  $end_month = mktime(0, 0, 0, $mon + 1, 0, $year); // Midnight, end of this month
+
+  $start_month -= erp_get_timezone();
+  $end_month -= erp_get_timezone();
+
+  $where = "WHERE n.created >= $start_month ".
+           "AND n.created < $end_month ";
+
+  $orderby = "ORDER BY sales DESC";
+
+  if ($user = $_GET['user']) {
+    $user = user_load(array('name' => $user));
+    $where .= "AND n.uid = '". $user->uid ."' ";
+    $header = array('Item nid', 'Count', 'Item Description', 'Qty', 'Price', 'User', 'List');
+    $orderby = "ORDER BY name, sales DESC";
+  }
+
+  $query =
+    "SELECT id.item_nid, ei.item_type, COUNT( id.item_nid ) AS num, no.title, SUM( id.qty ) AS qty, SUM( id.price * id.qty ) AS sales, u.uid as uid, u.name as name ".
+    "FROM {erp_invoice_data} id ".
+    "INNER JOIN {erp_item} ei ON id.item_nid = ei.nid ".
+    "INNER JOIN {node} no ON id.item_nid = no.nid ".
+    "INNER JOIN {erp_invoice} i ON id.nid = i.nid ".
+    "INNER JOIN {node} n ON i.nid = n.nid ".
+    "INNER JOIN {users} u ON u.uid = n.uid ".
+    $where ." ".
+    "GROUP by u.uid, id.item_nid ".
+    $orderby;
+
+  $result = db_query($query);
+
+  $total = array();
+
+  while ($row = db_fetch_object($result)) {
+    $line['nid'] = l($row->item_nid . ($row->item_type ? '': '*'), 'node/'. $row->item_nid);
+    $line['count'] = $row->num;
+    $line['title'] = $row->title;
+    $line['qty'] = $row->qty;
+    $line['sales'] = erp_currency($row->sales);
+    $line['name'] = $row->name;
+
+    // Now, get a list of the invoices.
+    $result2 = db_query(
+      "SELECT distinct i.nid, i.invoice_id FROM {erp_invoice} i ".
+      "INNER JOIN {node} n ON i.nid = n.nid ".
+      "INNER JOIN {erp_invoice_data} id ON i.nid = id.nid ".
+      "INNER JOIN {users} u ON u.uid = n.uid ".
+      $where ." ".
+      "AND n.uid = '%d' AND id.item_nid = '%d'", $user->uid, $row->item_nid);
+    $invoices = array();
+    while ($invoice = db_fetch_object($result2)) {
+      $invoices[] = l($invoice->invoice_id, 'node/'. $invoice->nid);
+    }
+    $line['list'] = implode($invoices, ', ');
+
+    $total[$row->item_type] += $line['sales'];
+    $full_total += $line['sales'];
+
+    $rows[] = $line;
+  }
+
+  if (count($total)) {
+    $rows[] = array(NULL, NULL, NULL, t('Total'), sprintf('%01.2f', $full_total), NULL, NULL);
+  }
+  else {
+    $rows[] = array(array('data' => t('No records found'), 'colspan' => '7'));
+  }
+
+  $html = l('prev month', $_GET['q'], array('attributes' => array('attributes' => NULL, 'query' => 'year='. $prev_year .'&month='. $prev_mon .'&user='. $user->name))) ." <b>$mon - ". date('F', mktime(0, 0, 0, $mon)) ."</b> ";
+  $html .= l('next month', $_GET['q'], array('attributes' => array('attributes' => NULL, 'query' => 'year='. $next_year .'&month='. $next_mon .'&user='. $user->name)));
+  $html .= theme('table', $header, $rows);
+
+  $rows = array();
+  $row = array();
+  $header = array('Type', 'Amount', 'Approx Income');
+
+  foreach ($total as $type => $tot) {
+    if (!$type) {
+      $row['type'] = 'Unknown';
+    }
+    else {
+      $row['type']  = $type;
+    }
+    $row['amount'] = erp_symbol() . erp_currency($tot);
+    if ($type == 'service') {
+      $row['income'] = erp_symbol() . erp_currency($tot);
+      $tot_income += $tot;
+      $grand_total += $tot;
+    }
+    else {
+      $row['income'] = erp_symbol() . erp_currency($tot - ($tot / variable_get('erp_item_markup', 0)));
+      $tot_income += $tot - ($tot / variable_get('erp_item_markup', 0));
+      $grand_total += $tot;
+    }
+    $rows[] = $row;
+  }
+
+  $rows[] = array('Total', erp_symbol() . erp_currency($grand_total), erp_symbol() . erp_currency($tot_income));
+
+  $html .= '<hr>';
+  $html .= theme('table', $header, $rows);
+
+  return $html;
+}
+
+function erp_reports_store_breakdown() {
+  $year = isset($_GET['year']) && is_numeric($_GET['year']) ? $_GET['year'] : (date('n', mktime()) < 7 ? date('Y', mktime()) - 1 : date('Y', mktime()));
+
+  for ($mon = 7; $mon < 19; $mon++) {
+    $start_month = mktime(0, 0, 0, $mon, 0, $year); // Midnight, end of last month
+    $end_month = mktime(0, 0, 0, $mon + 1, 0, $year); // Midnight, end of this month
+
+    $start_month -= erp_get_timezone();
+    $end_month -= erp_get_timezone();
+
+    $where = "WHERE ni.created >= $start_month
+              AND ni.created < $end_month";
+
+    $sql = "SELECT SUM(i.total) AS sales, s.store_id as sid, ns.title as title
+       FROM {erp_invoice} i
+       INNER JOIN {erp_store_link} l  ON i.nid = l.nid
+       INNER JOIN {erp_store}      s  ON s.store_id = l.store_id
+       INNER JOIN {node}           ns ON ns.nid = s.nid
+       INNER JOIN {node}           ni ON ni.nid = i.nid
+      ". $where ."
+       GROUP BY s.store_id
+       ORDER BY ns.title ASC";
+    $result = db_query($sql);
+
+    while ($row = db_fetch_object($result)) {
+      $months[$row->title][$mon] = $row;
+    }
+  }
+
+  $rows = array();
+  $total_months = array();
+
+  if (isset($months)) {
+    foreach ($months as $store => $month) {
+
+      $total = 0;
+
+      $row = array(array('data' => $store,
+                   'class' => 'erp-item-title'));
+      for ($m=7; $m < 19; $m++) {
+        if ($month[$m]->sales) {
+          if ($m > 12) {
+            $sales_link = l(erp_currency($month[$m]->sales), 'erp/reports/store_item_breakdown', array('attributes' => NULL, 'query' => 'year='. ($year + 1) .'&month='. ($m - 12) .'&store='. $store));
+          }
+          else {
+            $sales_link = l(erp_currency($month[$m]->sales), 'erp/reports/store_item_breakdown', array('attributes' => NULL, 'query' => 'year='. $year .'&month='. $m .'&store='. $store));
+          }
+        }
+        else {
+          $sales_link = 0;
+        }
+        $row[] = array('data' => $sales_link,
+                       'class' => 'erp-item-sales');
+        $total += $month[$m]->sales;
+        $total_months[$m] += $month[$m]->sales;
+      }
+
+      $row[] = array('data' => '<b>'. ($total ? erp_currency($total) : 0) .'</b>',
+                     'class' => 'erp-item-sales');
+
+      $rows[] = $row;
+    }
+  }
+
+  $row = array();
+  $row[] = array('data' => 'Totals');
+  foreach ($total_months as $month => $amount) {
+    if ($amount > 0) {
+      if ($month > 12) {
+        $row[] = array('data' => l(erp_currency($amount), 'erp/reports/store_item_breakdown', array('attributes' => NULL, 'query' => 'year='. ($year + 1) .'&month='. ($month - 12))), 'class' => 'erp-item-sales');
+      }
+      else {
+        $row[] = array('data' => l(erp_currency($amount), 'erp/reports/store_item_breakdown', array('attributes' => NULL, 'query' => 'year='. ($year) .'&month='. $month)), 'class' => 'erp-item-sales');
+      }
+    }
+    else {
+      $row[] = array('data' => 0);
+    }
+    $grandtotal += $amount;
+  }
+  $row[] = array('data' => '<b>'. ($grandtotal ? erp_currency($grandtotal) : 0) .'</b>',
+                 'class' => 'erp-item-sales');
+  $rows[] = $row;
+
+  $html = l('prev year', $_GET['q'], array('attributes' => NULL, 'query' => 'year='. ($year-1) ." <b>$year/". ($year+1) ."</b> "));
+  $html .= l('next year', $_GET['q'], array('attributes' => NULL, 'year='. ($year+1)));
+
+  $header[] = t('Store');
+  for ($j=7; $j<19; $j++) {
+    $header[] = t(date("F", mktime(0, 0, 0, $j, 1, 2000)));
+  }
+  $header[] = t('Total');
+
+  $html .= theme('table', $header, $rows);
+
+  return $html;
+}
+
+function erp_reports_store_sales_by_item() {
+  if (!$year = $_GET['year']) {
+    $year = date('Y');
+  }
+  if (!$mon = $_GET['month']) {
+    $mon = date('m');
+  }
+
+  // Figure out months etc for links
+  if ($mon == 12) {
+    $next_mon = 1;
+    $next_year = $year + 1;
+  }
+  else {
+    $next_mon = $mon + 1;
+    $next_year = $year;
+  }
+  if ($mon == 1) {
+    $prev_mon = 12;
+    $prev_year = $year - 1;
+  }
+  else {
+    $prev_mon = $mon - 1;
+    $prev_year = $year;
+  }
+
+  $start_month = mktime(0, 0, 0, $mon, 0, $year); // Midnight end of last month
+  $end_month = mktime(0, 0, 0, $mon + 1, 0, $year); // Midnight end of this month
+
+  $start_month -= erp_get_timezone();
+  $end_month -= erp_get_timezone();
+
+  $where = "WHERE n.created >= $start_month ".
+           "AND n.created < $end_month ";
+
+  $orderby = "ORDER BY sales DESC";
+
+  if ($store = $_GET['store']) {
+    $store = node_load(array('type' => 'erp_store', 'title' => $store));
+    $where .= "AND l.store_id = '". $store->store_id ."' ";
+    $header = array('Item nid', 'Count', 'Item Description', 'Qty', 'Price', 'User', 'List');
+    $orderby = "ORDER BY name, sales DESC";
+  }
+
+  $query =
+    "SELECT id.item_nid, ei.item_type, COUNT( id.item_nid ) AS num, no.title, SUM( id.qty ) AS qty, SUM( id.price * id.qty ) AS sales, s.store_id as sid, ns.title as name ".
+    "FROM {erp_invoice_data} id ".
+    "INNER JOIN {erp_item} ei ON id.item_nid = ei.nid ".
+    "INNER JOIN {node} no ON id.item_nid = no.nid ".
+    "INNER JOIN {erp_invoice} i ON id.nid = i.nid ".
+    "INNER JOIN {erp_store_link} l ON i.nid = l.nid ".
+    "INNER JOIN {erp_store} s ON s.store_id = l.store_id ".
+    "INNER JOIN {node} ns ON s.nid = ns.nid ".
+    "INNER JOIN {node} n  ON i.nid = n.nid " .
+    $where ." ".
+    "GROUP by s.store_id, id.item_nid ".
+    $orderby;
+
+  $result = db_query($query);
+
+  $total = array();
+
+  while ($row = db_fetch_object($result)) {
+    $line['nid'] = l($row->item_nid . ($row->item_type ? '': '*'), 'node/'. $row->item_nid);
+    $line['count'] = $row->num;
+    $line['title'] = $row->title;
+    $line['qty'] = $row->qty;
+    $line['sales'] = erp_currency($row->sales);
+    $line['name'] = $row->name;
+
+    // Now, get a list of the invoices.
+    $result2 = db_query(
+      "SELECT distinct i.nid, i.invoice_id FROM {erp_invoice} i ".
+      "INNER JOIN {node} n ON i.nid = n.nid ".
+      "INNER JOIN {erp_invoice_data} id ON i.nid = id.nid ".
+      "INNER JOIN {erp_store_link} l ON i.nid = l.nid ".
+      $where ." ".
+      "AND l.store_id = '%d' AND id.item_nid = '%d'", $store->sid, $row->item_nid);
+    $invoices = array();
+    while ($invoice = db_fetch_object($result2)) {
+      $invoices[] = l($invoice->invoice_id, 'node/'. $invoice->nid);
+    }
+    $line['list'] = implode($invoices, ', ');
+
+    $total[$row->item_type] += $line['sales'];
+    $full_total += $line['sales'];
+
+    $rows[] = $line;
+  }
+
+  if (count($total)) {
+    $rows[] = array(NULL, NULL, NULL, t('Total'), erp_currency($full_total), NULL, NULL);
+  }
+  else {
+    $rows[] = array(array('data' => t('No records found'), 'colspan' => '7'));
+  }
+
+  $html = l('prev month', $_GET['q'], array('attributes' => NULL, 'query' => 'year='. $prev_year .'&month='. $prev_mon .'&store='. $store->title)) ." <b>$mon - ". date('F', mktime(0, 0, 0, $mon)) ."</b> ";
+  $html .= l('next month', $_GET['q'], array('attributes' => NULL, 'query' => 'year='. $next_year .'&month='. $next_mon .'&store='. $store->title));
+  $html .= theme('table', $header, $rows);
+
+  $rows = array();
+  $row = array();
+  $header = array('Type', 'Amount', 'Approx Income');
+
+  foreach ($total as $type => $tot) {
+    if (!$type) {
+      $row['type'] = 'Unknown';
+    }
+    else {
+      $row['type']  = $type;
+    }
+    $row['amount'] = erp_symbol() . erp_currency($tot);
+    if ($type == 'service') {
+      $row['income'] = erp_symbol() . erp_currency($tot);
+      $tot_income += $tot;
+      $grand_total += $tot;
+    }
+    else {
+      $row['income'] = erp_symbol() . erp_currency($tot - ($tot / variable_get('erp_item_markup', 0)));
+      $tot_income += $tot - ($tot / variable_get('erp_item_markup', 0));
+      $grand_total += $tot;
+    }
+    $rows[] = $row;
+  }
+
+  $rows[] = array('Total', erp_symbol() . erp_currency($grand_total), erp_symbol() . erp_currency($tot_income));
+
+  $html .= '<hr>';
+  $html .= theme('table', $header, $rows);
+
+  return $html;
+}

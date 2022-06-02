@@ -1,0 +1,25 @@
+<?php
+
+function erp_price_list_install() {
+  drupal_install_schema('erp_price_list');
+}
+
+function erp_price_list_schema() {
+  $schema['erp_price_list'] = array(
+    'fields' => array(
+      'code' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'nid' => array('type' => 'int', 'not null' => TRUE, 'disp-width' => '11'),
+      'uid' => array('type' => 'int', 'not null' => TRUE, 'disp-width' => '11'),
+      'last' => array('type' => 'int', 'not null' => FALSE, 'disp-width' => '11'),
+      'title' => array('type' => 'varchar', 'length' => '128', 'not null' => FALSE),
+      'sell_price' => array('type' => 'float', 'not null' => FALSE, 'disp-width' => '10'),
+      'buy_price' => array('type' => 'float', 'not null' => TRUE, 'disp-width' => '10'),
+      'category' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
+    'primary key' => array('code', 'uid'),
+  );
+
+  return $schema;
+}
+
+
+

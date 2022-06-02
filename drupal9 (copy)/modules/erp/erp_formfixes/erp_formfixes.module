@@ -1,0 +1,78 @@
+<?php
+// $Id: erp_formfixes.module,v 1.15.2.13 2010/03/13 02:49:09 simon Exp $
+
+/**
+ * @file
+ *
+ * form fixes module
+ */
+
+function erp_formfixes_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      return t('ERP module to change various forms in non-erp modules to suit our purposes');
+      break;
+  }
+}
+
+function erp_formfixes_form_alter(&$form, &$form_state, $form_id) {
+  if (is_array($form['workflow']['job status'])) {
+    $form['workflow']['job status']['#weight'] = -2;
+    if (!variable_get('erp_job_workflow_as_dropdown', FALSE)) {
+      $form['workflow']['job status']['#prefix'] = '<div class="workflow-form-radio">';
+      $form['workflow']['job status']['#suffix'] = '</div><br />';
+    }
+  }
+
+  // Move things around, change submit to save.
+  switch ($form_id) {
+  case 'erp_cash_sale_node_form':
+    break;
+
+  case 'erp_quote_node_form':
+    $form_details = 'quote_details';
+    break;
+
+  case 'erp_invoice_node_form':
+  case 'erp_purchase_order_node_form':
+  case 'erp_goods_receive_node_form':
+    break;
+
+  case 'erp_job_node_form':
+    $form_details = 'job_details';
+    $values = $form['taxonomy'][3]['#options'];
+    if ($values && is_array($values)) {
+      foreach ($values as $key => $object) {
+        if ($object == '- Please choose -') {
+          continue;
+        }
+        $default = array_pop(array_flip($object->option));
+        break;
+      }
+      $form['taxonomy'][3]['#default_value'] = $default;
+      $form = erp_formfixes_move_taxonomy($form, $form_details, 'erp_job');
+    }
+
+    break;
+  }
+}
+
+function erp_formfixes_move_taxonomy($form, $form_details, $type) {
+  $vid = db_result(db_query("SELECT vid FROM {vocabulary_node_types} WHERE type = '%s'", $type));
+  if ($vid) {
+    // Move the taxonomy categories into the job details section. Maybe this should be a selectable list.
+    $form[$form_details]['taxonomy'] = $form['taxonomy'];
+
+    // Remove the fieldset setting
+    unset($form[$form_details]['taxonomy']['#type']);
+
+    // Sink them to the bottom
+    $form[$form_details]['taxonomy']['#weight'] = 2;
+
+    // Stop the taxonomy being presented again.
+    unset($form['taxonomy']);
+  }
+  return $form;
+}
+
+

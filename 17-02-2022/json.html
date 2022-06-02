@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON</title>
+</head>
+<body>
+    
+<p id="demo"></p>
+<p id="demo1"></p>
+<p id="demo2"></p>
+<p id="demo3"></p>
+
+<script>
+const myObj = {name:"Ronak Jain", age:21, city:"India"};
+const myObj1 = {name:"Ronak Jain", age:21, city:"India"};
+// myObj["name"] 
+document.getElementById("demo").innerHTML = myObj1["name"]+"<br/><br/>"+myObj.name +" " + myObj.age;
+
+
+
+// JSON.parse - it convert the text file into the javascript object
+
+const txt = '{"name":"Ronak", "age":21, "state":"jaipur"}'
+const obj = JSON.parse(txt);
+document.getElementById("demo1").innerHTML = obj.name + ", " + obj.age;
+
+
+
+
+// Data written as an JSON array will be parsed into a JavaScript array
+
+const text = '[ "Ford", "BMW", "Audi", "Fiat" ]';
+const myArr = JSON.parse(text);
+document.getElementById("demo2").innerHTML = myArr[0];
+
+
+// Create a JSON sring from a javascript object
+const ob = {name: "John", age: 30, city: "New York"};
+const myJSON = JSON.stringify(ob);
+document.getElementById("demo3").innerHTML = myJSON;
+
+
+</script>
+
+</body>
+</html>

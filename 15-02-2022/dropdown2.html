@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    State: <select name="State" id="State" onchange = "f1(this.id,'city')">
+        <option value="" selected="selected">State</option>
+      <option value="Rajasthan">Rajasthan</option>
+      <option value="Maharashtra">Maharashtra</option>
+        <option value="Himachal Pradesh">Himachal Pradesh</option>
+    </select><br><br>
+    City: <select name="city" id="city">
+        <option value="" selected="selected">City</option>
+  </select>
+    
+<script>
+  function f1(s,c){
+      var s = document.getElementById(s);
+      var c = document.getElementById(c);
+
+      c.innerHTML = "";
+      
+      if(s.value == "Rajasthan")
+      {
+          var optionArray = ["Kishangarh|kishangarh", "Ajmer|ajmer", "Jaipur|jaipur", "Udaipur|udaipur"];
+      }
+      else if(s.value == "Maharashtra")
+      {
+          var optionArray = ["Mumbai|mumbai", "Pune|pune", "Nagpur|nagpur", "Nasik|nasik"];	
+      }
+      else if(s.value == "Himachal Pradesh")
+      {
+          var optionArray = ["Shimla|shimla", "Dharamshala|dharamshala", "Manali|manali", "Solan|solan"];
+      }
+
+      for(var option in optionArray)
+      {
+          var pair = optionArray[option].split("|");
+          var newoption = document.createElement("option");
+          newoption.value = pair[0];
+          newoption.innerHTML = pair[1];
+          c.options.add(newoption);
+      }
+  }  
+</script>
+</body>
+</html>

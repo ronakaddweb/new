@@ -1,0 +1,80 @@
+div.page {
+  width:650px;
+}
+
+div.nid_desc {
+  position:absolute;
+  left:550px;
+  top:10px;
+}
+
+div.address {
+  position:absolute;
+  left:150px;
+  top:25px;
+}
+
+div.cust_info {
+  position:absolute;
+  left:0px;
+  top:160px;
+  width:650px;
+}
+
+div.workflow_log {
+  position:absolute;
+  left:0px;
+  top:450px;
+  width:650px;
+}
+
+h2.cust_heading {
+  width:450px;
+  position:absolute;
+  left:100px;
+  text-align:center;
+}
+
+h3.job-heading {
+  width:550px;
+  position:absolute;
+  top:85px;
+  left:50px;
+  text-align:center;
+}
+
+table.workflow_history {
+  font-size:10px;
+}
+
+div.agreement {
+  position:absolute;
+  left:0px;
+  top:620px;
+  font-size:80%;
+  width:650px;
+}
+
+div.company_details {
+  position:absolute;
+  left:0px;
+  top:730px;
+  font-size:80%;
+  width:650px;
+}
+
+img.logo {
+  position:absolute;
+  left:10px;
+  top:10px;
+  height:93px;
+  width:72px;
+}
+
+img.logo2 {
+  position:absolute;
+  left:580px;
+  top:755px;
+  height:93px;
+  width:72px;
+}

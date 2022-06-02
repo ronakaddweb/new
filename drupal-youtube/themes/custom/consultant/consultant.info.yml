@@ -1,0 +1,30 @@
+name: Consultant
+description : 'This is consultant theme'
+type: theme
+core: 8.x
+package: other
+base theme: false
+core_version_requirement: ^8 || ^9
+
+
+libraries:
+  - consultant/global-css-and-js
+
+
+regions:
+  social_links: 'Social Links'
+  logo: 'Logo'
+  navbar: 'Navbar'
+  menu_right: 'Menu Right'
+  home: 'Home'
+  header: 'Header'
+  review: 'Review'
+  # contact_us_left: 'Contact Us Left'
+  contact_us_right: 'Contact Us Right'
+  blogs_left: 'Blogs Left'
+  blogs_buttom: 'Blogs Buttom'
+  blogs_right: 'Blogs right'
+  content: 'Content'
+  footer_column: 'Footer Column'
+  footer_buttom: 'Footer Buttom'
+  

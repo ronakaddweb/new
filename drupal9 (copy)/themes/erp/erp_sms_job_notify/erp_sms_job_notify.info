@@ -1,0 +1,15 @@
+; $Id: erp_sms_job_notify.info,v 1.7.2.6 2009/12/26 00:22:23 simon Exp $
+name = erp sms job notification
+description = ERP sms job notification module
+package = "ERP"
+; dependencies[] = smsgateway
+dependencies[] = erp
+dependencies[] = erp_sms
+; core = 6.x
+
+; Information added by drupal.org packaging script on 2011-01-14
+version = "6.x-1.1"
+core = "6.x"
+project = "erp"
+datestamp = "1294967806"
+

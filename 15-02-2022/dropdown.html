@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <select id="parent_select">
+        <option>Select States</option>
+    </select>
+    <select id="child_select"></select>
+
+    <!-- <div class="wrapper">
+        <select id="parent_select"><option>Select St</option></select>
+        <select id="child_select"></select>
+    </div> -->
+
+    <script>
+        var mList = {
+	Rajasthan : ['Jaipur', 'Ajmer', 'Kota', 'Pushkar'],
+	Gujrat :  ['Rajkot', 'Ahemdabad', 'Surat', 'Vadodara'],
+	
+
+};
+el_parent = document.getElementById("parent_select"); //parent select element
+el_child = document.getElementById("child_select"); //child select element
+
+for (key in mList) { //populate the parent select element with array key
+	el_parent.innerHTML = el_parent.innerHTML + '<option>'+ key +'</option>';
+}
+
+//add event listener to parent select, so that when user selects an option, child gets populated
+el_parent.addEventListener('change', function populate_child(e){
+	el_child.innerHTML = '';
+	itm = e.target.value;
+	if(itm in mList){
+			for (i = 0; i < mList[itm].length; i++) {
+				el_child.innerHTML = el_child.innerHTML + '<option>'+ mList[itm][i] +'</option>';
+			}
+	}
+});
+    </script>
+</body>
+</html>

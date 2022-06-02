@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        var amount = parseInt(prompt("Enter the amount"));
+
+        var hundred  = Math.floor(amount/100);
+        var fifty = Math.floor((amount%100)/50); // 1
+        var twenty = Math.floor((amount%100)%(50)/(20))
+        var ten = Math.floor((amount%100)%(50)%(20)/10 )  
+        var five = Math.floor(((amount%100)%(50)%(20)%10)/ 5 )
+        var two = Math.floor(((amount%100)%(50)%(20)%(10)%5) / 2)
+
+        document.write(hundred+ "<br> " + fifty + "<br> " + twenty + "<br> " + ten + " <br>" + five + "<br>" + two);
+    </script>
+</body>
+</html>

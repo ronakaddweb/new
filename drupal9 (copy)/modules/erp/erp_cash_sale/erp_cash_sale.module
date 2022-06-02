@@ -1,0 +1,700 @@
+<?php
+// $Id: erp_cash_sale.module,v 1.19.2.19 2011/01/14 00:55:03 simon Exp $
+
+/**
+ * @files
+ *
+ * cash_sale module
+ *
+ */
+
+/**
+ * Help function for cash_sale module
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_cash_sale_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP cash_sale module.');
+      break;
+    case 'node/add#erp_cash_sale':
+      // This description shows up when users click "create content."
+      return t('ERP cash sale.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * cash_sale node name
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_cash_sale_node_name($node) {
+  return t('erp cash sale');
+}
+
+/**
+ * Implementation of cash_sale_node_info
+ *
+ * @return array of information
+ */
+function erp_cash_sale_node_info() {
+  return array('erp_cash_sale' =>
+               array('name' => t('erp cash sale'),
+                     'module' => 'erp_cash_sale',
+                     'description' => t('ERP Cash sale module'),
+                     'title_label' => t('Cash sale entered by'),
+                     'has_body' => FALSE));
+}
+
+/**
+ * Return whether the user has access to a function or not.
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_cash_sale_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      return user_access('add cash_sale', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit all cash_sale', $account)) {
+        return TRUE;
+      }
+
+      if (user_access('edit own cash_sale', $account) && ($account->uid == $node->uid)) {
+        return TRUE;
+      }
+      break;
+
+    case 'view':
+      if (user_access('view cash_sale', $account)) {
+        return TRUE;
+      }
+      break;
+  }
+  return FALSE;
+}
+
+/**
+ * cash_sale permissions
+ *
+ * @return unknown
+ */
+function erp_cash_sale_perm() {
+  return array(
+    'add cash_sale',
+    'edit all cash_sale',
+    'edit own cash_sale',
+    'admin cash_sale',
+    'view cash_sale');
+}
+
+/**
+ * Provide links for invoicing
+ *
+ * @param unknown_type $type
+ * @param unknown_type $node
+ * @param unknown_type $main
+ * @return unknown
+ */
+function erp_cash_sale_link($type, $node = 0, $main) {
+  global $user;
+
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_cash_sale') {
+    // Don't display a redundant edit link if they are node administrators.
+    if (erp_cash_sale_access('update', $node, $user) && !user_access('administer nodes')) {
+      $links['erp_cash_sale_link'] =
+        array('title' => t('edit this cash_sale'),
+              'href' => 'node/'. $node->nid .'/edit');
+    }
+
+    $links = array_merge($links, module_invoke_all('erp_cash_sale_link', $node));
+  }
+
+  return $links;
+}
+
+function erp_cash_sale_erp_job_link($node) {
+  if (user_access('add cash_sale')) {
+    $links['erp_cash_sale_erp_job_link'] =
+      array('title' => t('create cash sale'),
+            'href' => 'node/add/erp-cash-sale/'. $node->nid,
+            'attributes' => array('title' => t('Create a cash sale for this job.')));
+    return $links;
+  }
+  return array();
+}
+
+function erp_cash_sale_erp_cart_link($node) {
+  if (user_access('add cash_sale')) {
+    $links['erp_cash_sale_erp_cart_link'] = array(
+      'title' => t('create cash sale'),
+      'href' => 'node/add/erp-cash-sale/erp-cart',
+      'attributes' => array('title' => t('Create cash sale from cart')),
+      'query' => 'customer='. $_SESSION['curr_customer']
+    );
+    return $links;
+  }
+  return array();
+}
+
+function erp_cash_sale_erp_customer_link($node) {
+  if (user_access('add cash_sale')) {
+    $links['erp_cash_sale_erp_customer_link'] =
+      array('title' => t('create cash sale'),
+            'href' => 'node/add/erp-cash-sale',
+            'attributes' => array('title' => t('Create cash sale for customer')),
+            'query' => 'customer='. $node->nid);
+    return $links;
+  }
+  return array();
+}
+
+/**
+ * cash_sale menu functions
+ *
+ * @param unknown_type $may_cache
+ * @return unknown
+ */
+function erp_cash_sale_menu() {
+  $items['admin/erp/cash_sale'] = array(
+    'title' => 'Cash sale',
+    'description' => 'Configure erp cash sale settings',
+    'access arguments' => array('admin cash_sale'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_cash_sale_admin_settings')
+  );
+
+  return $items;
+}
+
+function erp_cash_sale_erp_quickjump_cs($number) {
+  $nid = erp_id_to_nid('cash_sale', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Cash sale not found');
+    return '';
+  }
+}
+
+function erp_cash_sale_erp_quickjump_info() {
+  return array('erp_cash_sale' => t('cs-xxx - load a cash sale using its number.'));
+}
+
+function erp_cash_sale_admin_settings() {
+  drupal_set_title(t('Cash sale settings'));
+
+  $form['erp_cash_sale_email_bcc'] =
+    array('#type' => 'textfield',
+          '#title' => t('Email address to BCC when sending cash sales'),
+          '#default_value' => variable_get('erp_cash_sale_email_bcc', ''));
+
+  $form['erp_invoice_serial'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Record serial numbers with invoice & cash sale items? (common settting between both modules)'),
+          '#default_value' => variable_get('erp_invoice_serial', FALSE));
+
+  $form['erp_cash_sale_default_count'] =
+    array('#type' => 'textfield',
+          '#title' => t('Default count for new cash sale lines'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => variable_get('erp_cash_sale_default_count', 1));
+
+  $form['erp_cash_sale_default_item'] =
+    array('#type' => 'textfield',
+          '#title' => t('Default item for new cash sale lines'),
+          '#size' => 40,
+          '#maxlength' => 255,
+          '#autocomplete_path' => 'erp/item/autocomplete/sell',
+          '#default_value' => variable_get('erp_cash_sale_default_item', ''));
+
+  $form += array_merge($form, erp_set_next_id_form('erp_cash_sale', 'cash_sale'));
+
+  return system_settings_form($form);
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * Now it's time to describe the form for collecting the information
+ * specific to this node type. This hook requires us to return some HTML
+ * that will be later placed inside the form.
+ */
+function erp_cash_sale_form(&$node, $form_state) {
+  global $user;
+
+  drupal_add_js(drupal_get_path('module', 'erp') .'/erp.js', 'footer');
+  drupal_add_tabledrag('draggable-entries', 'order', 'sibling', 'entry-line');
+
+  $type = node_get_types('type', $node);
+
+  $total_price = 0;
+
+  erp_set_customer($node);
+
+  // If this is being created from a quote, load the node data from that now.
+  $extra_ops = arg(3);
+  if ($extra_ops == 'erp-cart') {
+    erp_cart_load($node);
+  }
+
+  // Default to the current user.
+  if (!$node->owner) {
+    $node->owner = $user->name;
+  }
+
+  // Default node title
+  if (!$node->title) {
+    $node->title = $user->name .' - '. date("d/m/Y");
+  }
+
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => check_plain($type->title_label),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['cash_sale_details'] =
+    array('#prefix' => '<div class="cash-sale-details">',
+          '#type' => 'fieldset',
+          '#title' => 'cash sale details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->cash_sale_id) {
+    $form['cash_sale_details']['cash_sale_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'cash_sale id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->cash_sale_id);
+  }
+
+  $form['cash_sale_details']['customer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Customer'),
+          '#default_value' => $node->customer,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['customer_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->customer_nid);
+
+  $form['entries'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Current Cash Sale Items'),
+          '#tree' => TRUE,
+          '#theme' => 'entries',
+          '#collapsible' => FALSE,
+          '#prefix' => '<div id="entries">',
+          '#suffix' => '</div>');
+
+  erp_add_newline($node, $form_state);
+
+  // Now actually display the rows
+  for ($i = 0; $i < count($node->entries['qty']); $i++) {
+    $form['entries']['line'][$i] =
+      array('#type' => 'hidden',
+            '#attributes' => array('class' => 'entry-line'),
+            '#default_value' => ($i + 1));
+
+    $form['entries']['qty'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 6,
+            '#maxlength' => 6,
+            '#default_value' => $node->entries['qty'][$i],
+            '#prefix' => '<div class="qty">',
+            '#suffix' => '</div>');
+
+    $form['entries']['item'][$i] =
+      array('#type' => 'hidden',
+            '#default_value' => $node->entries['item'][$i]);
+
+    $form['entries']['item_desc'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 20,
+            '#maxlength' => 256,
+            '#autocomplete_path' => 'erp/item/autocomplete/sell',
+            '#default_value' => $node->entries['item_desc'][$i],
+            '#prefix' => '<div class="item-desc">',
+            '#suffix' => '</div>');
+
+    $form['entries']['extra'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 40,
+            '#maxlength' => 4096,
+            '#default_value' => $node->entries['extra'][$i],
+            '#prefix' => '<div class="extra">',
+            '#suffix' => '</div>');
+
+    if (variable_get('erp_invoice_serial', FALSE)) {
+      if (!is_array($node->entries['serial'][$i])) {
+        $node->entries['serial'][$i] = array($node->entries['serial'][$i]);
+      }
+
+      $form['entries']['serial'][$i] =
+        array('#type' => 'textfield',
+              '#size' => 20,
+              '#maxlength' => 255,
+              '#default_value' => implode(',', $node->entries['serial'][$i]),
+              '#prefix' => '<div class="serial">',
+              '#suffix' => '</div>');
+    }
+
+    $form['entries']['price'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 12,
+            '#maxlength' => 12,
+            '#default_value' => erp_currency($node->entries['price'][$i]),
+            '#prefix' => '<div class="price">',
+            '#suffix' => '</div>');
+
+    // Remove button.
+    $form['entries']['delete'][$i] = array(
+      '#type' => 'submit',
+      '#name' => 'delete_' . $i,
+      '#value' => t('X'),
+      '#weight' => 1,
+      '#submit' => array('erp_remove_line_submit'),
+      '#ahah' => array(
+        'path' => 'erp/linejs/' . ($i + 1),
+        'wrapper' => 'entries',
+        'method' => 'replace',
+        'effect' => 'none'
+      ),
+    );
+
+    $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+  }
+
+  $form['entries']['total'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="total">',
+          '#title' => 'Total Price',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#value' => erp_currency($total_price),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline'] =
+    array('#type' => 'fieldset',
+          '#prefix' => '<div class="newline">',
+          '#tree' => TRUE,
+          '#theme' => 'newline',
+          '#title' => t('New Cash Sale Line'),
+          '#collapsible' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['qty'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="qty">',
+          '#size' => 6,
+          '#maxlength' => 6,
+          '#default_value' => variable_get('erp_cash_sale_default_count', ''),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item_desc'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="item-desc">',
+          '#size' => 20,
+          '#maxlength' => 255,
+          '#autocomplete_path' => 'erp/item/autocomplete/sell',
+          '#default_value' => variable_get('erp_cash_sale_default_item', ''),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['extra'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="extra">',
+          '#size' => 40,
+          '#maxlength' => 4096,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  if (variable_get('erp_invoice_serial', FALSE)) {
+    $form['entries']['newline']['serial'] =
+      array('#type' => 'textfield',
+            '#prefix' => '<div class="serial">',
+            '#size' => 20,
+            '#maxlength' => 255,
+            '#default_value' => '',
+            '#suffix' => '</div>');
+  }
+
+  $form['entries']['newline']['price'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="price">',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => erp_item_price_from_string(variable_get('erp_cash_sale_default_item', '')),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item'] =
+    array('#type' => 'hidden',
+          '#default_value' => '');
+
+  $form['entries']['newline']['addline'] =
+    array('#type' => 'submit',
+          '#prefix' => '<div class="addline">',
+          '#name' => 'addline',
+          '#value' => t('Add line/Recalc'),
+          '#submit' => array('erp_add_newline_submit'),
+          '#ahah' => array(
+            'path' => 'erp/linejs/0',
+            'wrapper' => 'entries',
+            'method' => 'replace',
+            'effect' => 'none'
+          ),
+          '#suffix' => '</div>');
+
+  $form['payment_amount'] =
+    array('#type' => 'textfield',
+          '#title' => 'Payment Amount',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => erp_currency($total_price));
+
+  $form['payment_type'] =
+    array('#type' => 'select',
+          '#title' => 'Payment Type',
+          '#options' => erp_payment_type_list(),
+          '#default_value' => $node->payment_type);
+
+  $form['#validate'][] = 'erp_cash_sale_custom_validate';
+
+  $form['#action'] = erp_fix_ahah_action($node);
+
+  return $form;
+}
+
+function erp_cash_sale_custom_validate(&$form, &$form_state) {
+  if ($form_state['clicked_button']['#id'] == 'edit-submit') {
+    if (intval($form_state['values']['payment_amount']) == 0) {
+      form_set_error('payment_amount', t('All cash sales require payment immediately.'));
+    }
+
+    erp_customer_field_validate($form_state, t('cash sale'));
+
+    erp_newline_fields_validate($form_state);
+  }
+}
+
+/**
+ * Helper function to insert cash_sale data after node submission
+ *
+ * @param unknown_type $node
+ */
+function _insert_cash_sale_data($node) {
+  // Clear out old entries.
+  db_query("DELETE FROM {erp_cash_sale_data} WHERE nid = %d", $node->nid);
+
+  // Insert new entries
+  if (is_array($node->entries['qty'])) {
+    for ($i = 0 ; $i < count($node->entries['qty']); $i++) {
+      if (!empty($node->entries['qty'][$i]) and !empty($node->entries['item_desc'][$i])) {
+        $item_info = erp_item_desc_breakup($node->entries['item_desc'][$i]);
+        $supplier_id = $item_info[0];
+        $stock_code = $item_info[1];
+
+        $supplier_nid = erp_id_to_nid('supplier', $supplier_id);
+
+        $num_nodes = db_result(db_query("SELECT COUNT(n.nid) FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' and supplier_nid = %d", $stock_code, $supplier_nid));
+        if ($num_nodes == 1) {
+          $result = db_query("SELECT * FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' and supplier_nid = %d", $stock_code, $supplier_nid);
+          $stock_node = db_fetch_object($result);
+        }
+        else {
+          watchdog('erp-cash-sale', 'erp_item: non unique/existant erp_item - '. $stock_code);
+        }
+
+        $line = array(
+          'nid' => $node->nid,
+          'line' => $i,
+          'item_nid' => $stock_node->nid,
+          'completed_date' => date_convert($node->entries['completed_date'][$i], DATE_DATETIME, DATE_UNIX),
+          'extra' => $node->entries['extra'][$i],
+          'qty' => $node->entries['qty'][$i],
+          'price' => $node->entries['price'][$i],
+          'serial' => $node->entries['serial'][$i],
+          'sell_date' => time(),
+          'stock_code' => $stock_node->nid,
+          'sell_price' => $node->entries['price'],
+        );
+
+        drupal_write_record('erp_cash_sale_data', $line);
+
+        module_invoke_all('erp_cash_sale_entry', $line);
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_insert().
+ *
+ * As a new node is being inserted into the database, we need to do our own
+ * database inserts.
+ */
+function erp_cash_sale_insert($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  $node->total = $node->entries['total'];
+  $node->payment_amount = $node->payment_amount;
+
+  //insert identifying data into cash_sale table
+  drupal_write_record('erp_cash_sale', $node);
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into cash_sale_data table
+  _insert_cash_sale_data($node);
+
+  module_invoke_all('erp_cash_sale_save', $node);
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * As an existing node is being updated in the database, we need to do our own
+ * database updates.
+ */
+function erp_cash_sale_update($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  $node->total = $node->entries['total'];
+  $node->payment_amount = $node->payment_amount;
+
+  module_invoke_all('erp_cash_sale_delete', $node);
+
+  //insert identifying data into cash_sale table
+  drupal_write_record('erp_cash_sale', $node, array('cash_sale_id'));
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into cash_sale_data table
+  _insert_cash_sale_data($node);
+
+  module_invoke_all('erp_cash_sale_save', $node);
+}
+
+/**
+ * Implementation of hook_delete().
+ *
+ * When a node is deleted, we need to clean up related tables.
+ */
+function erp_cash_sale_delete($node) {
+  db_query('DELETE FROM {erp_cash_sale} WHERE nid = %d', $node->nid);
+  db_query('DELETE FROM {erp_cash_sale_data} WHERE nid = %d', $node->nid);
+
+  module_invoke_all('erp_cash_sale_delete', $node);
+}
+
+/**
+ * Implementation of hook_load().
+ *
+ * Now that we've defined how to manage the node data in the database, we
+ * need to tell Drupal how to get the node back out. This hook is called
+ * every time a node is loaded, and allows us to do some loading of our own.
+ */
+function erp_cash_sale_load(&$node) {
+  $cash_sale = db_fetch_object(db_query('SELECT * FROM {erp_cash_sale} WHERE nid = %d', $node->nid));
+
+  $owner = erp_oid_validate($cash_sale->oid);
+
+  // Now load all the cash_sale entries
+  $result = db_query('SELECT * FROM {erp_cash_sale_data} WHERE nid = %d ORDER BY line ASC', $node->nid);
+
+  while ($cash_sale_data = db_fetch_array($result)) {
+    $cash_sale->entries['item'][] = $cash_sale_data['item_nid'];
+
+    $item = node_load($cash_sale_data['item_nid']);
+
+    $cash_sale->entries['item_desc'][] = erp_item_desc_build($item);
+    $cash_sale->entries['completed_date'][] = $cash_sale_data['completed_date'];
+    $cash_sale->entries['extra'][] = $cash_sale_data['extra'];
+    $cash_sale->entries['price'][] = $cash_sale_data['price'];
+    $cash_sale->entries['qty'][] = $cash_sale_data['qty'];
+    $cash_sale->entries['serial'][] = $cash_sale_data['serial'];
+  }
+
+  return $cash_sale;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_cash_sale_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_cash_sale_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+
+function erp_cash_sale_theme() {
+  return array(
+    'erp_cash_sale_info' => array(
+      'arguments' => array('form' => NULL),
+    ),
+  );
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_cash_sale_info($node) {
+  if ($node->printing) {
+    return erp_print_info($node);
+  }
+  else {
+    return erp_screen_info($node);
+  }
+}
+
+function erp_cash_sale_views_api() {
+  return array('api' => 2.0);
+}

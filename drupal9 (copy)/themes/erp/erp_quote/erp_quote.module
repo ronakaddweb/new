@@ -1,0 +1,679 @@
+<?php
+// $id$
+
+/**
+ * @file
+ *
+ * quote module
+ */
+
+/**
+ * Help function for quote module
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_quote_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP quote module.');
+      break;
+    case 'node/add#erp_quote':
+      // This description shows up when users click "create content."
+      return t('ERP quote.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * quote node name
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_quote_node_name($node) {
+  return t('erp quote');
+}
+
+/**
+ * Implementation of quote_node_info
+ *
+ * @return array of information
+ */
+function erp_quote_node_info() {
+  return array('erp_quote' => array('name' => t('erp quote'),
+                                    'module' => 'erp_quote',
+                                    'description' => t('ERP Quote module'),
+                                    'title_label' => t('Quote entered by'),
+                                    'has_body' => FALSE));
+}
+
+/**
+ * Return whether the user has access to a function or not.
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_quote_access($op, $node, $account) {
+	switch ($op) {
+		case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('add quote', $account);
+      break;
+
+		case 'update':
+		case 'delete':
+		  // Users who create a node may edit or delete it later, assuming they have the
+		  // necessary permissions.
+	    if (user_access('edit own quote', $account) && ($account->uid == $node->uid)) {
+	      return TRUE;
+	    }
+	    if (user_access('edit quote')) {
+	      return TRUE;
+	    }
+      break;
+
+		case 'view':
+      if (user_access('view quotes', $account)) {
+        return TRUE;
+      }
+	}
+}
+
+/**
+ * quote permissions
+ *
+ * @return unknown
+ */
+function erp_quote_perm() {
+  return array(
+    'add quote',
+    'edit quote',
+    'view quotes',
+    'edit own quote',
+    'admin quote',
+  );
+}
+
+/**
+ * Provide links for invoicing
+ *
+ * @param unknown_type $type
+ * @param unknown_type $node
+ * @param unknown_type $main
+ * @return unknown
+ */
+function erp_quote_link($type, $node = 0, $main) {
+  global $user;
+
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_quote') {
+    // Don't display a redundant edit link if they are node administrators.
+    if (erp_quote_access('update', $node, $user) && !user_access('administer nodes')) {
+      $links['erp_quote_link'] =
+        array('title' => t('edit this quote'),
+              'href' => 'node/'. $node->nid .'/edit');
+    }
+
+    $links = array_merge($links, module_invoke_all('erp_quote_link', $node));
+  }
+  return $links;
+}
+
+function erp_quote_erp_cart_link($node) {
+  if (user_access('add quote')) {
+    $links['erp_quote_erp_cart_link'] = array(
+      'title' => t('create quote'),
+      'href' => 'node/add/erp-quote/erp-cart',
+      'attributes' => array('title' => t('Create quote from cart')),
+      'query' => 'customer='. $_SESSION['curr_customer']
+    );
+    return $links;
+  }
+  return array();
+}
+
+function erp_quote_erp_customer_link($node) {
+  if (user_access('add quote')) {
+    $links['erp_quote_erp_customer_link'] = array(
+      'title' => t('create quote'),
+      'href' => 'node/add/erp-quote',
+      'attributes' => array('title' => t('Create a quote for this customer')),
+      'query' => 'customer='. $node->nid
+    );
+    return $links;
+  }
+  return array();
+}
+
+/**
+ * quote menu functions
+ *
+ * @param unknown_type $may_cache
+ * @return unknown
+ */
+function erp_quote_menu() {
+  $items['admin/erp/quote'] = array(
+    'title' => 'Quote',
+    'description' => 'Configure erp quote settings',
+    'access arguments' => array('admin quote'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_quote_admin_settings')
+  );
+
+  return $items;
+}
+
+function erp_quote_erp_quickjump_q($number) {
+  $nid = erp_id_to_nid('quote', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Quote not found');
+    return '';
+  }
+}
+
+function erp_quote_erp_quickjump_info() {
+  return array('erp_quote' => t('q-xxx - load a quote using its number.'));
+}
+
+function erp_quote_admin_settings() {
+  drupal_set_title(t('Quote settings'));
+
+  $form['erp_quote_email_bcc'] =
+    array('#type' => 'textfield',
+          '#title' => t('Email address to BCC when sending quotes'),
+          '#default_value' => variable_get('erp_quote_email_bcc', ''));
+
+  $form['erp_quote_valid_days'] =
+    array('#type' => 'textfield',
+          '#title' => t('How many days quotes are valid for before expiring'),
+          '#default_value' => variable_get('erp_quote_valid_days', 14));
+
+  $form += erp_set_next_id_form('erp_quote', 'Quote');
+
+  return system_settings_form($form);
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * Now it's time to describe the form for collecting the information
+ * specific to this node type. This hook requires us to return some HTML
+ * that will be later placed inside the form.
+ */
+function erp_quote_form(&$node, $form_state) {
+  global $user;
+
+  drupal_add_js(drupal_get_path('module', 'erp') .'/erp.js', 'footer');
+  drupal_add_tabledrag('draggable-entries', 'order', 'sibling', 'entry-line');
+
+  $type = node_get_types('type', $node);
+
+  $total_price = 0;
+
+  erp_set_customer($node);
+  
+  // If this is being created from a quote, load the node data from that now.
+  $extra_ops = arg(3);
+  if ($extra_ops == 'erp-cart') {
+    erp_cart_load($node);
+  }  
+
+  // Default to the current user.
+  if (!$node->owner) {
+    $node->owner = $user->name;
+  }
+
+  if (!$node->title) {
+    $node->title = $user->name . ' - ' . date("d/m/Y");
+  }
+
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => check_plain($type->title_label),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['quote_details'] =
+    array('#prefix' => '<div class="quote-details">',
+          '#type' => 'fieldset',
+          '#title' => 'quote details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  if ($node->quote_id) {
+    $form['quote_details']['quote_id'] =
+      array('#type' => 'textfield',
+            '#title' => 'quote id',
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => $node->quote_id);
+  }
+
+  $form['quote_details']['customer'] =
+    array('#type' => 'textfield',
+          '#title' => t('Customer'),
+          '#default_value' => $node->customer,
+          '#size' => 30,
+          '#autocomplete_path' => 'erp/customer/autocomplete');
+
+  $form['quote_details']['customer_nid'] =
+    array('#type' => 'hidden',
+          '#default_value' => $node->customer_nid);
+
+  $form['quote_details']['quote_status'] =
+    array('#prefix' => '<br />',
+          '#type' => 'checkbox',
+          '#title' => t('Closed'),
+          '#default_value' => $node->quote_status);
+
+  $form['entries'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Current Quote Items'),
+          '#tree' => TRUE,
+          '#theme' => 'entries',
+          '#collapsible' => FALSE,
+          '#prefix' => '<div id="entries">',
+          '#suffix' => '</div>');
+
+  erp_add_newline($node, $form_state);
+
+  // Now actually display the rows
+  for ($i = 0; $i < count($node->entries['qty']); $i++) {
+    $form['entries']['line'][$i] =
+      array('#type' => 'hidden',
+            '#attributes' => array('class' => 'entry-line'),
+            '#default_value' => ($i + 1));
+
+    $form['entries']['qty'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 6,
+            '#maxlength' => 6,
+            '#default_value' => $node->entries['qty'][$i],
+            '#prefix' => '<div class="qty">',
+            '#suffix' => '</div>');
+
+    $form['entries']['item'][$i] =
+      array('#type' => 'hidden',
+            '#default_value' => $node->entries['item'][$i]);
+
+    $form['entries']['item_desc'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 20,
+            '#maxlength' => 255,
+            '#autocomplete_path' => 'erp/item/autocomplete/sell',
+            '#default_value' => $node->entries['item_desc'][$i],
+            '#prefix' => '<div class="item-desc">',
+            '#suffix' => '</div>');
+
+    $form['entries']['extra'][$i] =
+      array('#type' => 'textarea',
+            '#size' => 40,
+            '#rows' => 2,
+            '#default_value' => $node->entries['extra'][$i],
+            '#prefix' => '<div class="extra">',
+            '#suffix' => '</div>');
+
+    if (variable_get('erp_invoice_serial', FALSE)) {
+      if (!is_array($node->entries['serial'][$i])) {
+        $node->entries['serial'][$i] = array($node->entries['serial'][$i]);
+      }
+
+      $form['entries']['serial'][$i] =
+        array('#type' => 'textfield',
+              '#size' => 20,
+              '#maxlength' => 255,
+              '#default_value' => implode(",", $node->entries['serial'][$i]),
+              '#prefix' => '<div class="serial">',
+              '#suffix' => '</div>');
+    }
+
+    $form['entries']['price'][$i] =
+      array('#type' => 'textfield',
+            '#size' => 12,
+            '#maxlength' => 12,
+            '#default_value' => erp_currency($node->entries['price'][$i]),
+            '#prefix' => '<div class="price">',
+            '#suffix' => '</div>');
+
+    // Remove button.
+    $form['entries']['delete'][$i] = array(
+      '#type' => 'submit',
+      '#name' => 'delete_' . $i,
+      '#value' => t('X'),
+      '#weight' => 1,
+      '#submit' => array('erp_remove_line_submit'),
+      '#ahah' => array(
+        'path' => 'erp/linejs/' . ($i + 1),
+        'wrapper' => 'entries',
+        'method' => 'replace',
+        'effect' => 'none'
+      ),
+    );
+
+    $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+  }
+
+  $form['entries']['total'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="total">',
+          '#title' => 'Total Price',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#value' => erp_currency($total_price),
+          '#suffix' => '</div>');
+
+  $form['entries']['newline'] =
+    array('#type' => 'fieldset',
+          '#prefix' => '<div class="newline">',
+          '#tree' => TRUE,
+          '#theme' => 'newline',
+          '#title' => t('New Quote Line'),
+          '#collapsible' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['qty'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="qty">',
+          '#size' => 6,
+          '#maxlength' => 6,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item_desc'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="item-desc">',
+          '#size' => 20,
+          '#maxlength' => 255,
+          '#autocomplete_path' => 'erp/item/autocomplete/sell',
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['extra'] =
+    array('#type' => 'textarea',
+          '#prefix' => '<div class="extra">',
+          '#size' => 40,
+          '#rows' => 2,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  if (variable_get('erp_invoice_serial', FALSE)) {
+    $form['entries']['newline']['serial'] =
+      array('#type' => 'textfield',
+            '#prefix' => '<div class="serial">',
+            '#size' => 20,
+            '#maxlength' => 255,
+            '#default_value' => '',
+            '#suffix' => '</div>');
+  }
+
+  $form['entries']['newline']['price'] =
+    array('#type' => 'textfield',
+          '#prefix' => '<div class="price">',
+          '#size' => 12,
+          '#maxlength' => 12,
+          '#default_value' => '',
+          '#suffix' => '</div>');
+
+  $form['entries']['newline']['item'] =
+    array('#type' => 'hidden',
+          '#value' => '');
+
+  $form['entries']['newline']['addline'] =
+    array('#type' => 'submit',
+          '#prefix' => '<div class="addline">',
+          '#name' => 'addline',
+          '#value' => t('Add line/Recalc'),
+          '#submit' => array('erp_add_newline_submit'),
+          '#ahah' => array(
+            'path' => 'erp/linejs/0',
+            'wrapper' => 'entries',
+            'method' => 'replace',
+            'effect' => 'none'
+          ),
+          '#suffix' => '</div>');
+
+  $form['extra_notes'] =
+    array('#type' => 'fieldset',
+          '#collapsible' => TRUE,
+          '#collapsed' => $node->extra_notes ? FALSE : TRUE,
+          '#title' => 'Extra Notes');
+
+  $form['extra_notes']['extra_notes'] =
+    array('#type' => 'textarea',
+          '#rows' => 20,
+          '#title' => 'Write your extra notes here',
+          '#default_value' => $node->extra_notes);
+  
+  $form['extra_notes']['format'] = filter_form(FILTER_FORMAT_DEFAULT, NULL, array('extra_notes_format'));
+
+  $form['#validate'][] = 'erp_quote_custom_validate';
+
+  $form['#action'] = erp_fix_ahah_action($node);
+
+  return $form;
+}
+
+function erp_quote_custom_validate(&$form, &$form_state) {
+  if ($form_state['clicked_button']['#id'] == 'edit-submit') {
+    erp_customer_field_validate($form_state, t('quote'));
+
+    erp_newline_fields_validate($form_state);
+  }
+}
+
+/**
+ * Helper function to insert quote data after node submission
+ *
+ * @param unknown_type $node
+ */
+function _insert_quote_data($node) {
+  // Clear out old entries.
+  db_query("DELETE FROM {erp_quote_data} WHERE nid = %d", $node->nid);
+
+  // Insert new entries
+  if (is_array($node->entries['qty'])) {
+    for ($i = 0 ; $i < count($node->entries['qty']); $i++) {
+      if (!empty($node->entries['qty'][$i]) and !empty($node->entries['item_desc'][$i])) {
+
+        // first check if the item is in stock?
+        // node load, searching for title = info given by form row
+        list($supplier_id, $stock_code, $desc, $price) = erp_item_desc_breakup($node->entries['item_desc'][$i]);
+        $supplier_nid = erp_id_to_nid('supplier', $supplier_id);
+
+        $num_nodes = db_result(db_query("SELECT COUNT(n.nid) FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' AND supplier_nid = %d", $stock_code, $supplier_nid));
+        if ($num_nodes == 1) {
+          $result = db_query("SELECT * FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' AND supplier_nid = %d", $stock_code, $supplier_nid);
+          $stock_node = db_fetch_object($result);
+        }
+        else {
+          watchdog('erp-quote', 'erp_item: non unique erp_item - '. $stock_code);
+        }
+
+        // Save each row
+        $line = array(
+          'nid' => $node->nid,
+          'line' => $i,
+          'item_nid' => $stock_node->nid,
+          'extra' => $node->entries['extra'][$i],
+          'qty' => $node->entries['qty'][$i],
+          'price' => $node->entries['price'][$i],
+          'serial' => $node->entries['serial'][$i],
+        );
+
+        drupal_write_record('erp_quote_data', $line);
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_insert().
+ *
+ * As a new node is being inserted into the database, we need to do our own
+ * database inserts.
+ */
+function erp_quote_insert($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  $node->total = erp_get_total($node);
+
+  drupal_write_record('erp_quote', $node);
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into quote_data table
+  _insert_quote_data($node);
+
+  module_invoke_all('erp_quote_save', $node);
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * As an existing node is being updated in the database, we need to do our own
+ * database updates.
+ */
+function erp_quote_update($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  // get the total
+  $node->total = erp_get_total($node);
+
+  drupal_write_record('erp_quote', $node, array('quote_id'));
+
+  // sort row data from line data
+  erp_sort_entries($node->entries);
+
+  // insert data into quote_data table
+  _insert_quote_data($node, $node->quote_id);
+
+  module_invoke_all('erp_quote_save', $node);
+}
+
+/**
+ * Implementation of hook_delete().
+ *
+ * When a node is deleted, we need to clean up related tables.
+ */
+function erp_quote_delete($node) {
+  db_query('DELETE FROM {erp_quote} WHERE nid = %d', $node->nid);
+  db_query('DELETE FROM {erp_quote_data} WHERE nid = %d', $node->nid);
+
+  module_invoke_all('erp_quote_delete', $node);
+}
+
+/**
+ * Implementation of hook_load().
+ *
+ * Now that we've defined how to manage the node data in the database, we
+ * need to tell Drupal how to get the node back out. This hook is called
+ * every time a node is loaded, and allows us to do some loading of our own.
+ */
+function erp_quote_load($node) {
+  $quote = db_fetch_object(db_query('SELECT * FROM {erp_quote} WHERE nid = %d', $node->nid));
+
+  $quote->owner = erp_oid_validate($quote->oid);
+
+  // Now load all the quote entries
+  $result = db_query('SELECT * FROM {erp_quote_data} WHERE nid = %d ORDER BY line ASC', $quote->nid);
+
+  while ($quote_data = db_fetch_array($result)) {
+    $quote->entries['item'][] = $quote_data['item_nid'];
+
+    $item = node_load($quote_data['item_nid']);
+
+    $quote->entries['item_desc'][] = erp_item_desc_build($item);
+    $quote->entries['price'][] = $quote_data['price'];
+    $quote->entries['qty'][] = $quote_data['qty'];
+    $quote->entries['extra'][] = $quote_data['extra'];
+    $quote->entries['serial'][] = $quote_data['serial'];
+  }
+
+  return $quote;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_quote_view(&$node, $teaser, $page) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_quote_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function erp_quote_theme() {
+  return array(
+    'erp_quote_info' => array(
+      'arguments' => array('node' => NULL),
+    )
+  );
+}
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish.
+ */
+function theme_erp_quote_info($node) {
+  if ($node->printing) {
+    return erp_print_info($node);
+  }
+  else {
+    return erp_screen_info($node);
+  }
+}
+
+function erp_quote_views_api() {
+  return array('api' => 2.0);
+}
+
+/**
+ * Implementation of hook_cron().
+ *
+ */
+function erp_quote_cron() {
+  // Retrieve the expiry days from settings
+  $expiry_days = variable_get('erp_quote_valid_days', 14);
+
+  // If the number of days is set
+  if (is_numeric($expiry_days)) {
+    // Calculate the number of days before today that has to be the age.
+    $oldest_date = (time() - ($expiry_days * 84600));
+    $result = db_query("SELECT n.nid FROM {node} n INNER JOIN {erp_quote} q ON n.nid = q.nid WHERE n.type = 'erp_quote' AND q.quote_status <> 'C' AND n.changed < %d", $oldest_date);
+    while ($row = db_fetch_array($result)) {
+      // Mark it as closed.
+      erp_close('quote', $row['nid']);
+    }
+  }
+}

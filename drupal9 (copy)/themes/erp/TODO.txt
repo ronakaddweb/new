@@ -1,0 +1,60 @@
+#
+# Things remaining
+#
+
+Functionality
+-------------
+Critial
+-------
+* A view for stock
+* Goods recieve and purchase order refine linking/closing process. Make more like payments/invoice.
+* Define rules about number formatting/precisions, field sizes etc.
+* Numerical precision needs to be increased for pricing. 
+  Currently float(10,2), (12,4) would be better and use round(x, 2).
+* Totals should be a purely derived attribute - (except for payments).
+
+Niceties
+--------
+* Move all _settings into erp.inc and rename to erp.module
+* Create warranty module to track warranty returns
+* Create more "transitions" processes, like job -> invoice
+* Make stock codes clickable links in purchase orders.
+* payment_type module needs a _settings section to allow editing payment types
+* Allow user defined functions to be called to calculate price markup on
+  import?
+* Customisable price levels module needs doing.
+* Documentation for installation/configuration
+* CRM history
+
+
+Polishing
+---------
+* Javascript in lots of places to fill in values for numbers.
+* Make forms all look nicer
+* Custom theme? or Custom module with nice icons like "controlpanel"
+* Remove hardcoded settings from modules and make /settings menus (part done)
+* Make generic function for saving invoice/po/quote/cash sale items and update
+all modules.
+* Consolidate images to one directory
+* Look into the new "node as an OG" functionality they've been discussing
+to use the "customer" node as the OG container. (implemented)
+* Make instructions in "INSTALL" clearer on the use of groups etc
+* Barcode scanning?
+	Easy - PS/2 Scanner and line inputs up to tab down the page
+* Relationships, so you can associate the options for a laptop with its node
+
+
+Old Completed Tasks
+-------------------
+* Create .install files for all modules (completed)
+* Multiple views for purchase orders - open, closed, all (completed)
+* Change stock table to use "code" from item, not "nid" for the stock_code, as
+  this is the "internally" used code, and thus multiple suppliers can supply the
+  same code. (completed)
+* Mark invoices as closed after receive payments (completed)
+* Link invoices to payments and vice versa more completely (completed)
+* Allow invoices to have multiple payments (completed)
+* Qty on hand in pricing views? (completed)
+* Change all tables to be erp_* (completed)
+* Patch for OG to provide the groups in a list box, rather than as heaps of
+	heckboxes. (completed)

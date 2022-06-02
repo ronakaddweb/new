@@ -1,0 +1,108 @@
+<?php
+
+/**
+ * @file
+ * Allows users to login exclusively with their email address in the input box.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Url;
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function login_onlyemail_form_user_login_form_alter(&$form, FormStateInterface $form_state) {
+  // Modifies the user login form.
+  $form['name']['#title'] = t('Email address');
+  $form['name']['#description'] = t('Enter your email address.');
+  $form['name']['#element_validate'][] = 'login_onlyemail_user_login_validate';
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function login_onlyemail_form_user_pass_alter(&$form, FormStateInterface $form_state) {
+  // Modifies the forgot password form.
+  $form['name']['#title'] = t('Email address');
+  $form['name']['#description'] = t('Enter your email address.');
+  $form['name']['#element_validate'][] = 'login_onlyemail_user_pass_validate';
+}
+
+/**
+ * Form element validation handler for the user login form.
+ *
+ * Allows users to authenticate by email.
+ */
+function login_onlyemail_user_login_validate($form, FormStateInterface $form_state) {
+  // Use $form_state->getUserInput() in the error message to guarantee
+  // that we send exactly what the user typed in.
+  $user_input = $form_state->getUserInput();
+  $name_input = $user_input['name'];
+
+  // Try loading by email.
+  if ($user = user_load_by_mail($name_input)) {
+    // Set the username for further validation.
+    $form_state->setValue('name', $user->getAccountName());
+    return TRUE;
+  }
+
+  // Set error message.
+  $query = isset($name_input) ? ['name' => $name_input] : [];
+  $form_state->setErrorByName(
+    'name', t('Unrecognized email or password. <a href=":password">Forgot your password?</a>',
+      [
+        ':password' => URL::fromRoute('user.pass', [], ['query' => $query])->toString(),
+      ]));
+  $form_state->setRebuild();
+  return FALSE;
+}
+
+/**
+ * Form element validation handler for the forgot password form.
+ *
+ * Allows users to recover the password using email.
+ */
+function login_onlyemail_user_pass_validate($form, FormStateInterface $form_state) {
+  // Use $form_state->getUserInput() in the error message to guarantee
+  // that we send exactly what the user typed in.
+  $user_input = $form_state->getUserInput();
+  $name_input = trim($user_input['name']);
+
+  // Try loading by email.
+  if ($user = user_load_by_mail($name_input)) {
+    // Set the username for further validation.
+    $form_state->setValue('name', $user->getAccountName());
+    return TRUE;
+  }
+
+  // Set error message.
+  $query = $name_input != '' ? $name_input : "This";
+  $form_state->setErrorByName(
+    'name', t('%email is not a registered email address.',
+      ['%email' => $query]));
+  $form_state->setRebuild();
+  return FALSE;
+}
+
+/**
+ * {@inheritdoc}
+ */
+function login_onlyemail_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    case 'help.page.login_onlyemail':
+      $text = file_get_contents(__DIR__ . '/README.md');
+      if (!\Drupal::moduleHandler()->moduleExists('markdown')) {
+        return '<pre>' . $text . '</pre>';
+      }
+      else {
+        // Use the Markdown filter to render the README.
+        $filter_manager = \Drupal::service('plugin.manager.filter');
+        $settings = \Drupal::configFactory()->get('markdown.settings')->getRawData();
+        $config = ['settings' => $settings];
+        $filter = $filter_manager->createInstance('markdown', $config);
+        return $filter->process($text, 'en');
+      }
+  }
+  return NULL;
+}

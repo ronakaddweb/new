@@ -1,0 +1,7 @@
+<?php
+
+function erp_formfixes_install() {
+  // Ensure we come after all the drupal core _form_alters
+  //db_query_range("UPDATE {system} SET weight = '1' WHERE filename = '%s'", 0, 1);
+}
+

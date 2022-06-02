@@ -1,0 +1,253 @@
+body {
+  margin: 1em;
+  background-color: #fff;
+  font-family: Verdana, Arial, Helvetica;
+  font-size: 12px;
+}
+
+.body {
+  font-family: Verdana, Arial, Helvetica;
+  font-size: 12px;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+
+th {
+  border-bottom: 1px solid grey;
+  padding-bottom: 3px;
+}
+
+tr {
+  vertical-align: top;
+}
+
+/* Erp stuff */
+.logo, .logo img {
+  width: 72px;
+  height: 93px;
+  float: left;
+  padding-right: 1em;
+}
+
+.paid {
+  left: 50%;
+  position: absolute;
+}
+
+.address {
+  float: left;
+  clear: none;
+}
+
+.details {
+  top: 0px;
+  text-align: right;
+  clear: none;
+}
+
+.bill_to {
+  text-align: left;
+  clear: both;
+  padding-bottom: 2em;
+  padding-left: 100px;
+}
+
+.outstanding {
+  position: relative;
+  text-align: left;
+  clear: both;
+  padding-bottom: 4em;
+}
+
+.outstanding .invoice, .outstanding .date, .outstanding .title {
+  text-align: left;
+  padding: 0px 15px 0px 15px;
+}
+
+.outstanding .total {
+  border-top: 1px solid grey;
+  border-bottom: 1px solid grey;
+}
+
+.outstanding .total-space {
+  height: 5em;
+}
+
+.info_pane {
+  text-align: left;
+  clear: both;
+  width: 30em;
+  margin-bottom: 2em;
+}
+
+.item_list {
+  text-align: left;
+  clear: both;
+  font-size: 11px;
+  margin-bottom: 1em;
+}
+
+.item_list td {
+  border-bottom: 1px solid grey;
+  padding-top: 3px;
+  padding-bottom: 3px;
+  padding-left: 5px;
+  padding-right: 5px;
+  text-align: right;
+}
+
+.item_list .column_desc {
+  text-align: left;
+  padding-right: 20px;
+}
+
+.totals {
+  text-align: right;
+  clear: both;
+  text-align: right;
+  margin-bottom: 1em;
+  border-bottom: 1px solid black;
+}
+
+.total {
+  padding-top: 1em;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  border-top: 1px solid black;
+}
+
+.erp-inv-outstanding {
+  margin-bottom: 1em;
+  /*padding-bottom: 1em;*/
+}
+
+.tax_total {
+}
+
+.contact-details {
+  text-align: right;
+  clear: none;
+  float: right; 
+}
+
+.bank-details {
+  text-align: left;
+  clear: right;
+  float: left;
+}
+
+.extra-msg {
+  text-align: left;
+  clear: both;
+}
+
+.job-heading {
+  font-size: 14pt;
+}
+
+.extra_notes {
+  text-align: left;
+  clear: both;
+}
+
+.statement-item { 
+  position: relative;
+  margin-bottom: 2em;
+}
+
+.print-content .job-info,
+.print-content .job-info table {
+  font-size: 85%;
+}
+
+.print-content .job-header {
+  width: 30%;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+  font-size: 1em;
+  font-weight: bold;
+  margin-bottom: 2em;
+}
+
+.print-content .job-header-details {
+  margin-bottom: 2em;
+  border: 2px solid #000000;
+}
+.print-content .job-header-details td {
+  width: 33%;
+  border: 1px solid #000000;
+  padding: 1em;
+}
+
+.print-content .job-extra-details {
+  margin-bottom: 2em;
+  border: 2px solid #000000;
+}
+.print-content .job-extra-details td {
+  padding: 1em;
+}
+.print-content .job-extra-details tbody {
+  border-top: none;
+}
+.print-content .job-extra-details .left {
+  width: 23%;
+  font-weight: bold;
+}
+.print-content .job-extra-details .right {
+  width: 77%;
+}
+
+.print-content .job-input-area {
+  margin-bottom: 2em;
+  border: 2px solid #000000;
+}
+.print-content .job-input-area td,
+.print-content .job-input-area th {
+  padding: 1em;
+}
+.print-content .job-input-area tr.even,
+.print-content .job-input-area tr.odd {
+  border-bottom: 1px dashed #000000;
+  height: 3em;
+  vertical-align: bottom;
+}
+
+
+.print-content .job-stock-area {
+  margin-bottom: 2em;
+  border: 2px solid #000000;
+}
+.print-content .job-stock-area tr.even,
+.print-content .job-stock-area tr.odd {
+  border: 1px solid #000000;
+  border-bottom: 1px dashed #000000;
+  height: 2em;
+  vertical-align: bottom;
+}
+
+.print-content .job-stock-area td,
+.print-content .job-stock-area th {
+  border: 1px solid #000000;
+  padding: 1em;
+}
+.print-content .job-input-area td.close-hours-title,
+.print-content .job-input-area td.close-hours-text,
+.print-content .job-input-area td.close-signoff-title,
+.print-content .job-input-area td.close-signoff-signature {
+  height: 4em;
+  width: 25%;
+  border: 1px solid #000000;
+  vertical-align: middle;
+}
+
+.print-content .job-input-area td.close-hours-title,
+.print-content .job-input-area td.close-signoff-title {
+  text-align: right;
+  padding-right: 2em;
+}
+

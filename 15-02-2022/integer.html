@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Integer</title>
+</head>
+
+<body>
+    <input type="number" id="int()" name="integer">
+    <input type="number" id="int1()" name="integer1">
+    <input type="button" onclick="btn()" value="Click">
+
+    <script type ="text/javascript">
+        function btn() {
+            var num1 = document.getElementById("int").value;
+            // alert(num1)
+            var num2 = document.getElementById("int1").value;
+            // alert(num2)
+            // alert("hello");
+
+            if (parseInt(num1) > parseInt(num2)) {
+                document.write(num1 +"is greater");
+            }
+            else {
+                document.write(num2 + "is greater");
+            }
+        }
+    </script>
+</body>
+
+</html>

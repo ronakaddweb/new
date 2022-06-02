@@ -1,0 +1,125 @@
+<?php
+// $Id: erp_invoice.install,v 1.4.2.13 2010/03/09 10:21:08 simon Exp $
+
+/**
+ * @file
+ * Install, update and uninstall function for the erp_invoice module.
+ */
+function erp_invoice_install() {
+  drupal_install_schema('erp_invoice');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} SET schema_version = 6003 WHERE name = 'erp_invoice'");
+}
+
+function erp_invoice_schema() {
+  $schema['erp_invoice'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'oid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'invoice_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'invoice_status' => array('type' => 'char', 'length' => '1', 'not null' => FALSE, 'default' => '0'),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'total' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'printed' => array('type' => 'int', 'size' => 'tiny', 'not null' => TRUE, 'default' => 0, 'disp-width' => '1'),
+      'po' => array('type' => 'varchar', 'length' => '40', 'not null' => FALSE),
+      'refs' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'invoice_id' => array('invoice_id')
+    ),
+  );
+
+  $schema['erp_invoice_data'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'line' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'item_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'completed_date' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '12'),
+      'extra' => array('type' => 'text', 'size' => 'medium'),
+      'price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'qty' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'serial' => array('type' => 'varchar', 'length' => '255', 'not null' => FALSE)),
+    'primary key' => array('nid', 'line'),
+  );
+
+  return $schema;
+}
+
+function erp_invoice_update_6001() {
+  $ret = array();
+
+  // Fix the invoice_id column
+  $ret[] = update_sql("ALTER TABLE {erp_invoice} DROP PRIMARY KEY");
+  //$ret[] = update_sql("ALTER TABLE {erp_invoice} DROP INDEX invoice_id");
+  $ret[] = update_sql("ALTER TABLE {erp_invoice} ADD UNIQUE (invoice_id)");
+  $ret[] = update_sql("ALTER TABLE {erp_invoice} CHANGE COLUMN invoice_id invoice_id INT(10) NOT NULL auto_increment");
+
+  $high_invoice = db_result(db_query("SELECT MAX(invoice_id) FROM {erp_invoice}"));
+  $ret[] = update_sql("ALTER TABLE {erp_invoice} AUTO_INCREMENT = ". $high_invoice++);
+
+  // Add the invoice nid column
+  $ret[] = update_sql("ALTER TABLE {erp_invoice_data} ADD COLUMN nid int(10) NOT NULL FIRST");
+
+  // Now look through all the invoices and update the erp_invoice_data table with their nid
+  $result = db_query("SELECT nid, invoice_id FROM {erp_invoice} ORDER BY invoice_id ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_invoice_data} SET nid = ". $row['nid'] ." WHERE invoice_id = ". $row['invoice_id'];
+    $ret[] = update_sql($sql);
+  }
+
+  // Fix the invoice data key to no longer require invoice_id in the data table
+  $ret[] = update_sql("ALTER TABLE {erp_invoice_data} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_invoice_data} ADD PRIMARY KEY (nid,line)");
+  $ret[] = update_sql("ALTER TABLE {erp_invoice_data} DROP invoice_id");
+
+  $ret[] = update_sql("ALTER TABLE {erp_invoice} CHANGE COLUMN customer_id customer_nid int(10) NOT NULL");
+
+  $ret[] = update_sql("ALTER TABLE {erp_invoice} CHANGE COLUMN total total FLOAT(20,5) NOT NULL DEFAULT 0");
+  $ret[] = update_sql("ALTER TABLE {erp_invoice_data} CHANGE COLUMN price price FLOAT(20,5) NOT NULL DEFAULT 0");
+
+  $ret[] = update_sql("ALTER TABLE {erp_invoice_data} CHANGE COLUMN serials serial VARCHAR(255) NOT NULL");
+
+  // Now loop through and update all entries
+  $result = db_query("SELECT * FROM {erp_invoice_data} ORDER BY completed_date ASC");
+  while ($row = db_fetch_array($result)) {
+    // If there is a completed date, update it.
+    if ($row['completed_date']) {
+      if (stristr($row['completed_date'], '/')) {
+        list($day, $mon, $year) = explode('/', $row['completed_date']);
+      }
+      elseif (stristr($row['completed_date'], '-')) {
+        list($day, $mon, $year) = explode('-', $row['completed_date']);
+       }
+       if (strlen($year) < 4) {
+        $year = '200'. intval($year);
+       }
+      $completed_date = implode('-', array($year, $mon, $day));
+      if ($completed_date != '') {
+        $ret[] = update_sql("UPDATE {erp_invoice_data} SET completed_date = ".  date_convert($completed_date, DATE_DATETIME, DATE_UNIX) ." WHERE nid = ". $row['nid'] ." AND line = ". $row['line']);
+      }
+    }
+  }
+
+  // Now cleanup fields
+  $ret[] = update_sql("ALTER TABLE {erp_invoice_data} CHANGE COLUMN completed_date completed_date INT(12) NOT NULL");
+
+  return $ret;
+}
+
+function erp_invoice_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_invoice} CHANGE COLUMN payment_status invoice_status char(1) NOT NULL DEFAULT '0'");
+
+  return $ret;
+}
+
+function erp_invoice_update_6003() {
+  $ret = array();
+
+  db_change_field($ret, 'erp_invoice_data', 'extra', 'extra', array('type' => 'text', 'size' => 'medium'));
+
+  return $ret;
+}

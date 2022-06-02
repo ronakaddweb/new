@@ -1,0 +1,1218 @@
+<?php
+// $Id: erp_job.module,v 1.23.2.24 2011/01/14 00:55:04 simon Exp $
+
+/**
+ * @file
+ *
+ * Job module
+ *
+ */
+
+/**
+ * Implementation of hook_help().
+ *
+ * Throughout Drupal, hook_help() is used to display help text at the top of
+ * pages. Some other parts of Drupal pages get explanatory text from these hooks
+ * as well. We use it here to provide a description of the module on the
+ * module administration page.
+ */
+function erp_job_help($path, $arg) {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP job module.');
+      break;
+    case 'node/add#erp_job':
+      // This description shows up when users click "create content."
+      return t('ERP job.');
+      break;
+  }
+  return NULL;
+}
+
+/**
+ * Implementation of hook_name().
+ *
+ * This is a required node hook. Since our module only defines one node
+ */
+function erp_job_node_name($node) {
+  return t('erp job');
+}
+
+/**
+ * return node info for a job.
+ *
+ * @return unknown
+ */
+function erp_job_node_info() {
+  return array(
+    'erp_job' => array(
+      'name' => t('erp job'),
+      'module' => 'erp_job',
+      'description' => t('ERP Job module'),
+      'title_label' => t('Job title'),
+      'has_body' => TRUE,
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_access().
+ *
+ * Node modules may implement hook_access() to determine the operations
+ * users may perform on nodes. This example uses a very common access pattern.
+ */
+function erp_job_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      // Only users with permission to do so may create this node type.
+      return user_access('add job', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      // Users who create a node may edit or delete it later, assuming they have the
+      // necessary permissions.
+      if (user_access('edit own job', $account) && ($account->uid == $node->uid)) {
+        return TRUE;
+      }
+
+      if (user_access('edit all jobs', $account)) {
+        return TRUE;
+      }
+      break;
+
+    case 'view':
+      if (user_access('view jobs', $account)) {
+        return TRUE;
+      }
+      break;
+  }
+}
+
+/**
+ * Display a block for jumping to a particular job
+ *
+ */
+function erp_job_block($op = 'list', $delta = 0) {
+  if ($op == 'list') {
+    switch ($delta) {
+      case 0:
+        $blocks[0]['info'] = t('Shop Job quick jump');
+        return $blocks;
+        break;
+    }
+  }
+  elseif ($op == 'view' && user_access('job list')) {
+    switch ($delta) {
+      case 0:
+        $block['content'] = job_search_form();
+        $block['subject'] = t('Job');
+        return $block;
+        break;
+    }
+  }
+  return array();
+}
+
+/**
+ * Implementation of hook_perm().
+ *
+ * Since we are limiting the ability to create new nodes to certain users,
+ * we need to define what those permissions are here. We also define a permission
+ * to allow users to edit the nodes they created.
+ */
+function erp_job_perm() {
+  return array('add job', 'edit job', 'edit all jobs', 'job list', 'open jobs', 'edit own job', 'admin job', 'view jobs');
+}
+
+/**
+ * Implementation of hook_link().
+ *
+ * This is implemented so that an edit link is displayed for users who have
+ * the rights to edit a node.
+ */
+function erp_job_link($type, $node = 0, $main) {
+  //global $user;
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_job') {
+    // Don't display a redundant edit link if they are node administrators.
+  //    if (erp_job_access('update', $node, $user) && !user_access('administer nodes')) {
+  //      //$links['erp_job_link'] = array(
+  //      //  'title' => t('edit this job'),
+  //      //  'href' => 'node/'. $node->nid .'/edit');
+  //    }
+
+    $links = array_merge($links, module_invoke_all('erp_job_link', $node));
+  }
+
+  return $links;
+}
+
+function erp_job_erp_asset_link($node) {
+  if (user_access('add job')) {
+    $links['erp_job_erp_asset_link'] =
+      array('title' => t('create job'),
+            'href' => 'node/add/erp-job/'. $node->nid,
+            'attributes' => array('title' => t('Create a job for this asset.')));
+    return $links;
+  }
+  return array();
+}
+
+function erp_job_erp_customer_link($node) {
+  if (user_access('add job')) {
+    $links['erp_job_erp_customer_link'] =
+      array('title' => t('create job'),
+            'href' => 'node/add/erp-job',
+            'attributes' => array('title' => t('Add a new job for this customer')),
+            'query' => 'customer='. $node->nid);
+    return $links;
+  }
+  return array();
+}
+
+function erp_job_erp_customer_list($node) {
+  if (user_access('add job')) {
+    $links['erp_job_erp_customer_list'] =
+      array('title' => t('show jobs'),
+            'href' => 'job/list/'. $node->nid,
+            'attributes' => array('title' => t('Show jobs for this customer')));
+    return $links;
+  }
+  return array();
+}
+
+/**
+ * Implementation of hook_menu().
+ *
+ * In order for users to be able to add nodes of their own, we need to
+ * give them a link to the node composition form here.
+ */
+function erp_job_menu() {
+  $items['admin/erp/job'] = array(
+    'title' => 'Job',
+    'description' => 'Configure erp job settings',
+    'access arguments' => array('admin job'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_job_admin_settings')
+  );
+
+  $items['user/%user/erp/jobs'] = array(
+    'title' => 'Jobs',
+    'description' => 'Display list of users jobs',
+    'page callback' => 'erp_job_user_list',
+    'page arguments' => array(1),
+    'access arguments' => array('job list'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  return $items;
+}
+
+function erp_job_erp_quickjump_j($number) {
+  $nid = erp_id_to_nid('job', $number);
+
+  if ($nid) {
+    return 'node/'. $nid;
+  }
+  else {
+    drupal_set_message('Job not found');
+    return '';
+  }
+}
+
+function erp_job_erp_quickjump_info() {
+  return array('erp_job' => t('j-xxx - load a job using its number.'));
+}
+
+/**
+ * Administration settings area for the job module.
+ *
+ * @return unknown
+ */
+function erp_job_admin_settings() {
+  drupal_set_title(t('job configuration'));
+
+  $matches = array();
+  $matches[] = '';
+  $result = db_query_range("SELECT u.name FROM {users} u LEFT JOIN {users_roles} r on u.uid = r.uid LEFT JOIN {role} ro on r.rid = ro.rid WHERE status = 1 AND ro.name = 'staff'", 0, 50);
+  while ($user_rec = db_fetch_object($result)) {
+    $matches[$user_rec->name] = check_plain($user_rec->name);
+  }
+
+  $form['erp_job_default_owner'] = array(
+   '#type' => 'select',
+   '#title' => t('Default owner for customer submitted jobs'),
+   '#default_value' => variable_get('erp_job_default_owner', ''),
+   '#options' => $matches
+  );
+
+  if (!user_access('access user profiles')) {
+    // Disable editing the field
+    $form['job_details']['owner']['#disabled'] = TRUE;
+  }
+
+  $form['erp_job_default_self'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('When creating a new job, default to using your own account?'),
+    '#default_value' => variable_get('erp_job_default_self', FALSE),
+    '#description' => t('If you do not specify a user in the job owner field, the job submission will give you an error and force you to enter a user. Checking this box will default to putting your own userid in the field, making job entry quicker.')
+  );
+
+  $form['erp_job_default_date'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('When creating a job, default the date/times to now?'),
+    '#default_value' => variable_get('erp_job_default_date', FALSE),
+    '#description' => t('No date defaults to 1-1-1970, which is valid, but probably not intended. Selecting this will default to "now" instead.'),
+  );
+
+  $form['erp_job_default_duration'] = array(
+    '#type' => 'textfield',
+    '#title' => t('When using a default date, set the end date to how far in the future?'),
+    '#size' => 20,
+    '#maxlength' => 20,
+    '#default_value' => variable_get('erp_job_default_duration', 86400),
+    '#description' => t('The number of minutes into the future for the end of the job. 86400 is one day, and is the default'),
+  );
+
+  $form['erp_job_disclaimer'] = array(
+    '#type' => 'textarea',
+    '#title' => t('The disclaimer printed on a job form for a customer to sign'),
+    '#default_value' => variable_get('erp_job_disclaimer', '')
+  );
+
+  $form['erp_job_invoice_group'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Group a customers invoices together for the invoice period?'),
+    '#default' => variable_get('erp_job_invoice_group', ''),
+    '#description' => t('When cron runs to create invoices, if this box is checked, a single invoice will be created for all jobs for a customer for the invoice period.')
+  );
+
+  $form['erp_job_invoice_period'] = array(
+    '#type' => 'select',
+    '#options' => array(
+      t('Daily') => t('Daily'),
+      t('Weekly') => t('Weekly'),
+      t('Fortnightly') => t('Fortnightly'),
+      t('Monthly') => t('Monthly')),
+    '#title' => t('How often to process jobs and create invoices'),
+    '#default' => variable_get('erp_job_invoice_period', '')
+  );
+
+  $form['erp_job_invoice_user'] = array(
+    '#type' => 'textfield',
+    '#title' => t('User to assign created invoices to.'),
+    '#default_value' => variable_get('erp_job_invoice_user', ''),
+    '#description' => t('Enter a valid username.')
+  );
+
+  if (module_exists('erp_job_billable')) {
+    $form['erp_job_invoice_item'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Code to assign billable time to on invoice.'),
+      '#default_value' => variable_get('erp_job_invoice_item', ''),
+      '#description' => t('Enter an item code to be entered for the billable time after closing a job.')
+    );
+
+    $wid = workflow_get_workflow_for_type('erp_job');
+    $states = workflow_get_states($wid) + array(t('(creation)'));
+
+    $form['erp_job_workflow_complete'] = array(
+      '#type' => 'select',
+      '#options' => $states,
+      '#title' => t('Select workflow state to automatically set invoiced jobs to.'),
+      '#default_value' => variable_get('erp_job_workflow_complete', ''),
+      '#description' => t('When an invoice is created from a job, if there is something selected here, then the job will automatically be assigned that value.')
+    );
+  }
+
+  $form['erp_job_workflow_as_dropdown'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show workflow as a dropdown'),
+    '#default_value' => variable_get('erp_job_workflow_as_dropdown', FALSE),
+    '#description' => t('Show the workflow list as a dropdown rather than radios.')
+  );
+
+  $form += erp_set_next_id_form('erp_job', 'Job');
+
+  return system_settings_form($form);
+}
+
+function erp_job_form_alter(&$form, &$form_state, $form_id) {
+  if (variable_get('erp_job_workflow_as_dropdown', FALSE)) {
+    if ($form_id == 'erp_job_node_form' || $form_id == 'workflow_tab_form') {
+      foreach ($form['workflow'] as $name => $values) {
+        if ($form['workflow'][$name]['#type'] == 'radios') {
+          $form['workflow'][$name]['#type'] = 'select';
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_form().
+ *
+ * Now it's time to describe the form for collecting the information
+ * specific to this node type. This hook requires us to return some HTML
+ * that will be later placed inside the form.
+ */
+function erp_job_form(&$node, $form_state) {
+  global $user;
+
+  drupal_add_css(drupal_get_path('module', 'erp_job') .'/erp_job.css');
+
+  $type = node_get_types('type', $node);
+
+  erp_set_customer($node);
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => check_plain($type->title_label),
+    '#size' => 60,
+    '#maxlength' => 128,
+    '#default_value' => $node->title,
+    '#required' => TRUE
+  );
+
+  $form['job_details'] = array(
+    '#prefix' => '<div class="job-details">',
+    '#type' => 'fieldset',
+    '#title' => 'job details',
+    '#collapsible' => TRUE,
+    '#collapsed' => ($node->job_id ? TRUE : FALSE),
+    '#tree' => FALSE,
+    '#suffix' => '</div>'
+  );
+
+  // If this is a new node, default to assigning to ourselves if we are supposed to.
+  if (!$node->nid) {
+    if (variable_get('erp_job_default_self', FALSE)) {
+      $node->owner = $user->name;
+    }
+
+	  if (variable_get('erp_job_default_date', FALSE)) {
+	    if (!isset($node->nid)) {
+	    	$now = date_now();
+	      $node->start_date = date_convert($now, DATE_OBJECT, DATE_DATETIME);
+	      $now->modify("+". variable_get('erp_job_default_duration', 86400) ." seconds");
+	      $node->end_date = date_convert($now, DATE_OBJECT, DATE_DATETIME);
+	    }
+	  }
+  }
+
+  $matches = array();
+  $matches[] = '';
+  $result = db_query_range("SELECT u.name FROM {users} u LEFT JOIN {users_roles} r on u.uid = r.uid LEFT JOIN {role} ro on r.rid = ro.rid WHERE status = 1 AND ro.name = 'staff'", 0, 50);
+  while ($user_rec = db_fetch_object($result)) {
+    $matches[$user_rec->name] = check_plain($user_rec->name);
+  }
+
+  $form['job_details']['owner'] = array(
+    '#type' => 'select',
+    '#title' => t('Owner'),
+    '#default_value' => $node->owner,
+    '#options' => $matches
+  );
+
+  if (!user_access('access user profiles')) {
+    // Disable editing the field
+    $form['job_details']['owner']['#disabled'] = TRUE;
+    $form['job_details']['owner']['#default_value'] = variable_get('erp_job_default_owner', '');
+  }
+
+  $form['job_details']['customer'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Customer'),
+    '#default_value' => $node->customer,
+    '#size' => 30,
+    '#autocomplete_path' => 'erp/customer/autocomplete'
+  );
+
+  $form['job_details']['customer_nid'] = array(
+    '#type' => 'value',
+    '#value' => _erp_customer_find($node->customer)
+  );
+
+  if ($node->job_id) {
+    $form['job_details']['job_id'] = array(
+      '#type' => 'textfield',
+      '#title' => 'Job id',
+      '#size' => 10,
+      '#maxlength' => 10,
+      '#default_value' => $node->job_id
+    );
+  }
+
+  $form['start_date'] = array(
+    '#type' => 'date_popup',
+    '#title' => t('Start date'),
+    '#default_value' => $node->start_date,
+    '#date_increment' => 15,
+    '#date_year_range' => '-1:1'
+  );
+
+  $form['end_date'] = array(
+    '#type' => 'date_popup',
+    '#title' => t('End date'),
+    '#default_value' => $node->end_date,
+    '#date_increment' => 15,
+    '#date_year_range' => '-1:1'
+  );
+
+  $form['job_desc'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Job Description'),
+    '#rows' => 6,
+    '#default_value' => $node->job_desc
+  );
+
+  $form['job_extra'] = array(
+    '#prefix' => '<div class="job-extra">',
+    '#type' => 'fieldset',
+    '#title' => 'job extra',
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#tree' => FALSE,
+    '#suffix' => '</div>'
+  );
+
+  $form['job_extra']['job_assets'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Job Assets'),
+    '#rows' => 4,
+    '#default_value' => $node->assets
+  );
+
+  return $form;
+}
+
+/**
+ * Implementation of hook_validate().
+ *
+ * Our "quantity" field requires a number to be entered. This hook lets
+ * us ensure that the user entered an appropriate value before we try
+ * inserting anything into the database.
+ *
+ * Errors should be signaled with form_set_error().
+ */
+function erp_job_validate($node, $form) {
+  if (!$node->customer) {
+    form_set_error('customer', t('Each job must have an associated customer.'));
+  }
+  else {
+    //$customer = node_load(array('title' => $edit->customer, 'type' => 'erp_customer'));
+    $customer = _erp_customer_find($node->customer);
+
+    if (!$customer->nid) {
+      form_set_error('customer', t('The customer %name does not exist.', array('%name' => theme('placeholder', $node->customer))));
+    }
+  }
+
+  if (!$node->owner) {
+    if (user_access('access user profiles')) {
+      form_set_error('owner', t('Each job must have an associated owner.'));
+    }
+    else {
+      form_set_error('owner', t('Setup incomplete, there must be a default owner for customer submitted jobs, please contact the website owner'));
+    }
+  }
+  else {
+    // Try and retrieve the uid for the job owner based on the name
+    $owner = user_load(array('name' => $node->owner));
+
+    // If we got a valid record, update the node, otherwise tell the user
+    if (!$owner->uid) {
+      form_set_error('owner', t('The owner %name does not exist.', array('%name' => theme('placeholder', $node->owner))));
+    }
+  }
+}
+
+/**
+ * Implementation of hook_insert().
+ *
+ * As a new node is being inserted into the database, we need to do our own
+ * database inserts.
+ */
+function erp_job_insert($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  // Change the date to a unix format date.
+  if ($node->start_date) {
+    $node->start_date = date_convert($node->start_date, DATE_DATETIME, DATE_UNIX);
+  }
+  if ($node->end_date) {
+    $node->end_date = date_convert($node->end_date, DATE_DATETIME, DATE_UNIX);
+  }
+
+  $timezone = erp_get_timezone();
+  $node->start_date -= $timezone;
+  $node->end_date -= $timezone;
+
+  drupal_write_record('erp_job', $node);
+
+  module_invoke_all('erp_job_insert', $node);
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * As an existing node is being updated in the database, we need to do our own
+ * database updates.
+ */
+function erp_job_update($node) {
+  // find the customer
+  $customer = _erp_customer_find($node->customer);
+  $node->customer_nid = $customer->nid;
+
+  // find the owner
+  $node->oid = erp_owner_validate($node->owner);
+
+  //date_default_timezone_set(variable_get('date_default_timezone_name', ''));
+
+  // Change the date to a unix format date.
+  if ($node->start_date) {
+    $node->start_date = date_convert($node->start_date, DATE_DATETIME, DATE_UNIX);
+  }
+  if ($node->end_date) {
+    $node->end_date = date_convert($node->end_date, DATE_DATETIME, DATE_UNIX);
+  }
+
+  $timezone = erp_get_timezone();
+  $node->start_date -= $timezone;
+  $node->end_date -= $timezone;
+
+  drupal_write_record('erp_job', $node, array('nid'));
+
+  module_invoke_all('erp_job_update', $node);
+}
+
+/**
+ * Implementation of hook_delete().
+ *
+ * When a node is deleted, we need to clean up related tables.
+ */
+function erp_job_delete($node) {
+  db_query('DELETE FROM {erp_job} WHERE nid = %d', $node->nid);
+
+  module_invoke_all('erp_job_delete', $node);
+}
+
+/**
+ * Implementation of hook_load().
+ *
+ * Now that we've defined how to manage the node data in the database, we
+ * need to tell Drupal how to get the node back out. This hook is called
+ * every time a node is loaded, and allows us to do some loading of our own.
+ */
+function erp_job_load($node) {
+  $job = db_fetch_object(db_query('SELECT * FROM {erp_job} WHERE nid = %d', $node->nid));
+
+  $job->owner = erp_oid_validate($job->oid);
+
+  $timezone = erp_get_timezone();
+  $job->start_date += $timezone;
+  $job->end_date += $timezone;
+
+  $job->start_date = date_convert($job->start_date, DATE_UNIX, DATE_DATETIME);
+  $job->end_date = date_convert($job->end_date, DATE_UNIX, DATE_DATETIME);
+
+  return $job;
+}
+
+/**
+ * Implementation of hook_view().
+ *
+ * This is a typical implementation that simply runs the node text through
+ * the output filters.
+ */
+function erp_job_view($node, $teaser, $page) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_job_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+
+function erp_job_theme() {
+  return array(
+    'erp_job_info' => array(
+      'file' => 'erp_job.module',
+      'arguments' => array(
+        'node' => NULL,
+      ),
+    ),
+  );
+};
+
+/**
+ * A custom theme function.
+ *
+ * By using this function to format our node-specific information, themes
+ * can override this presentation if they wish. We also wrap the default
+ * presentation in a CSS class that is prefixed by the module name. This
+ * way, style sheets can modify the output without requiring theme code.
+ */
+function theme_erp_job_info($node) {
+  if ($node->printing) {
+    return erp_job_print_info($node);
+  }
+  else {
+    return erp_job_screen_info($node);
+  }
+}
+
+function erp_job_screen_info($node) {
+  $output = '<div class="job-info">';
+
+  $owner = user_load(array('uid' => $node->oid));
+  $link = l($owner->name, 'user/'. $owner->uid);
+
+  $output .= '<div class="owner">';
+  $output .= t('Owner: ') . $link;
+  $output .= '</div>';
+
+  $output .= '<div class="entered">';
+  $output .= "Job entered on: ". format_date($node->created, 'small');
+  $output .= '</div>';
+
+  $output .= '<div class="start-date">';
+  if ($node->start_date) {
+    $output .= "<strong>Start Date: </strong>";
+    $output .= $node->start_date;
+  }
+  $output .= '</div>';
+
+  $output .= '<div class="end-date">';
+  if ($node->end_date) {
+    $output .= "<strong>End Date: </strong>";
+    $output .= $node->end_date;
+  }
+  $output .= '</div>';
+
+  $output .= '<div class="owner">';
+  if ($node->owner) {
+    $output .= "<strong>Owner: </strong>";
+    $output .= check_plain($node->owner);
+  }
+  $output .= '</div>';
+
+  if ($node->job_desc) {
+    $output .= "<h4>Fault Description:</h4><p>";
+    $output .= nl2br(check_plain($node->job_desc)) ."</p>";
+  }
+
+  $output .= implode(module_invoke_all('erp_job_info', $node));
+  $output .= implode(module_invoke_all('erp_extra_info', $node));
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+function erp_job_print_info($node) {
+  // Retrieve vairious bits used later
+  $store = erp_store_get_store($node->nid);
+
+  // TODO Support multiple people assigned to a job
+  $owner = user_load(array('uid' => $node->oid));
+  $user_link = l($owner->name, 'user/'. $owner->uid);
+
+  $output = '<div class="job-info">';
+  $output .= '<div class="job-header">';
+  $output .= '<div class="job-title">'. t('Customer service request') .'</div>';
+  $output .= '<div class="job-company">'. t('Assigned store - @store', array('@store' => $store->title)) .'</div>';
+  $output .= '</div>';
+
+  // We're going to use tables, I know its old fashioned, but hey, so am I
+  $output .= '<div class="job-header-details">';
+  $row = $rows = $header = array();
+
+  $row[] = array('data' => '<div class="customer-details">'. t('Customer details') .'</div>', 'class' => 'middle');
+  $row[] = array('data' => t('Job number: @job_number', array('@job_number' => $node->job_id)), 'class' => 'left');
+  $row[] = array('data' => t('Date entered: @date_entered', array('@date_entered' => format_date($node->created, 'small'))), 'class' => 'right');
+  $rows[] = $row;
+  $row = array();
+
+  $row[] = implode(module_invoke_all('erp_extra_info', $node));
+  $row[] = ''; // Need some stuff in here
+  $row[] = ''; // And here
+  $rows[] = $row;
+  $row = array();
+
+  $output .= theme('table', $header, $rows);
+  $rows = array();
+  $output .= '</div>';
+
+  $output .= '<div class="job-extra-details">';
+  $row[] = array('data' => t('Details: '), 'class' => 'left');
+  $row[] = array('data' => nl2br(check_plain($node->title ."\n". $node->job_desc)), 'class' => 'right');
+  $rows[] = $row;
+  $row = array();
+
+  $row[] = array('data' => t('Assigned to: '), 'class' => 'left');
+  $row[] = array('data' => $user_link, 'class' => 'right');
+  $rows[] = $row;
+  $row = array();
+
+  $row[] = array('data' => t('Start Date: '), 'class' => 'left');
+  $row[] = array('data' => $node->start_date, 'class' => 'right');
+  $rows[] = $row;
+  $row = array();
+
+  $row[] = array('data' => t('End Date: '), 'class' => 'left');
+  $row[] = array('data' => $node->end_date, 'class' => 'right');
+  $rows[] = $row;
+  $row = array();
+
+  $output .= theme('table', $header, $rows);
+  $rows = array();
+  $output .= '</div>';
+
+  $disclaimer = variable_get('erp_job_disclaimer', FALSE);
+  if ($disclaimer) {
+    $output .= '<div class="job-customer-agrees">';
+    $rows[] = array($disclaimer);
+  }
+  $output .= theme('table', $header, $rows);
+  $rows = array();
+  $output .= '</div>';
+
+  // Now wou output some spaces for the tech to use
+  $output .= '<div class="job-input-area">';
+  $header = array(t('Work performed: '), '', '', '');
+  for ($i = 0; $i < 10; $i++) {
+    $rows[] = array(array('data' => '&nbsp;', 'colspan' => 4)); // Blank cells
+  }
+  $rows[] = array(
+    array('data' => t('Hours spent: '), 'class' => 'close-hours-title'),
+    array('data' => '&nbsp;', 'class' => 'close-hours-text'),
+    array('data' => t('Customer signoff: '), 'class' => 'close-signoff-title'),
+    array('data' => '&nbsp;', 'class' => 'close-signoff-signature')
+  );
+  $output .= theme('table', $header, $rows);
+  $rows = array();
+  $output .= '</div>';
+
+  // Finally, space for any stock used
+  $output .= '<div class="job-stock-area">';
+  $header = array(t('Stock code'), t('Description'), t('Qty'), t('Price'));
+  for ($i = 0; $i < 5; $i++) {
+    $rows[] = array(array('&nbsp;'), array('&nbsp;'), array('&nbsp;'), array('&nbsp;')); // Blank cells
+  }
+  $output .= theme('table', $header, $rows);
+  $rows = array();
+  $output .= '</div>';
+
+  //$output .= implode(module_invoke_all('erp_job_info', $node));
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+function erp_job_user_list() {
+  $job_view = views_get_view('erp_job_my_all');
+
+  return $job_view->preview();
+}
+/**
+ * Mailhandler hook to submit jobs
+ *
+ */
+function erp_job_mailhandler(&$node, $result, $i, $header, $mailbox) {
+  // TODO: Should Lookup the customer from the email address
+
+  $from_addr = $header->fromaddress;
+  $p = '/[a-z0-9_.]+@[a-z0-9_.]+/ix';
+  preg_match($p, $from_addr, $from_array);
+
+  $customer_nid = erp_contact_find_customer_by_email($from_array[0]);
+
+  $customer = node_load($customer_nid);
+
+  $node->customer = $customer->title;
+
+  // TODO Locate correct technician for the job
+  $node->type = 'erp_job';
+  $node->name = 'simon';
+  $node->owner = 'simon';
+
+  // Set the event start tie to now.
+  $node->event_start = date('Y-m-d h:m:s');
+  $node->start_format = date('Y-m-d h:m:s');
+  $node->date = date('Y-m-d h:m:s');
+
+  return $node;
+}
+
+function erp_job_views_api() {
+  return array('api' => 2.0);
+}
+
+function action_job_send_email($op, $edit = array(), $node) {
+  switch ($op) {
+    case 'metadata':
+      return array(
+        'description' => t('Send Job Email'),
+        'type' => t('Email'),
+        'batchable' => FALSE,
+        'configurable' => TRUE,
+      );
+
+    case 'do':
+      // note this is the user who owns the node, not global $user
+      $user = user_load(array('uid' => $node->uid));
+      $job_owner = user_load(array('name' => $node->owner));
+      $contacts = erp_contact_get_bytype($node->customer_nid, 3, 'email');
+
+      $site_name = variable_get('site_name', 'Drupal');
+      $from = "$site_name <" . variable_get('site_mail', ini_get('sendmail_from')) . '>';
+      $subject = $edit['subject'];
+      $message = $edit['message'];
+      $recipient = $edit['recipient'];
+
+      // Setup the recipient string
+      $recipient = str_replace('%author', $user->mail, $recipient);
+      $recipient = str_replace('%owner', $job_owner->mail, $recipient);
+      $recipient = str_replace('%customer', $contacts, $recipient);
+
+      if (isset($node) && is_object($node)) {
+        $variables = array(
+          '%site_name' => $site_name,
+          '%username' => $user->name,
+          '%uid' => $node->uid,
+          '%node_url' => url('node/' . $node->nid, array('query' => array('absolute' => TRUE))),
+          '%node_type' => $node->type,
+          '%title' => $node->title,
+          '%teaser' => strip_tags($node->teaser),
+          '%body' => strip_tags($node->body)
+        );
+
+        $message = strtr($message, $variables);
+      }
+      if (drupal_mail('', $recipient, $subject, $message, "From: $from\nReply-to: $from\nX-Mailer: Drupal\nReturn-path: $from\nErrors-to: $from" )) {
+      /* TODO Create a hook_mail($key, &$message, $params) function to generate
+      the message body when called by drupal_mail. */
+        $account = array(); // Set this as needed
+        $language = user_preferred_language($account);
+        $object = array(); // Replace this as needed
+        $context['subject'] = $subject;
+        $context['body'] = $body;
+        $params = array('account' => $account, 'object' => $object, 'context' => $context);
+        drupal_mail('erp_job', '', $recipient, $language, $params, "From: $from\nReply-to: $from\nX-Mailer: Drupal\nReturn-path: $from\nErrors-to: $from" );
+        watchdog('action', 'Sent email to %recipient', array('%recipient' => $recipient));
+      }
+      else {
+        watchdog('error', 'Unable to send email to %recipient', array('%recipient' => $recipient));
+      }
+      break;
+
+    // return an HTML config form for the action
+    case 'form':
+      // default values for form
+      if (!isset($edit['recipient'])) $edit['recipient'] = '';
+      if (!isset($edit['subject'])) $edit['subject'] = '';
+      if (!isset($edit['message'])) $edit['message'] = '';
+      $form = array();
+
+      // add form components
+      $form['recipient'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Recipient'),
+        '#default_value' => $edit['recipient'],
+        '#size' => '20',
+        '#maxlength' => '254',
+        '#description' => t('The email address to which the message should be sent OR enter %author, %owner or %customer if you would like to send an e-mail to the original author, owner or customer for a job. The \'Main contect\' for the customer will be used. Multiple addresses can be seperated by commas ","', array('%author' => theme('placeholder', t('%author')))),
+      );
+      $form['subject'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Subject'),
+        '#default_value' => $edit['subject'],
+        '#size' => '20',
+        '#maxlength' => '254',
+        '#description' => t('The subject of the message.'),
+      );
+      $form['message'] = array(
+        '#type' => 'textarea',
+        '#title' => t('Message'),
+        '#default_value' => $edit['message'],
+        '#cols' => '80',
+        '#rows' => '20',
+        '#description' => t('The message that should be sent.  You may include the following variables: %site_name, %username, %node_url, %node_type, %title, %teaser, %body'),
+      );
+      return $form;
+
+     // validate the HTML form
+    case 'validate':
+      $errors = array();
+
+      if (!valid_email_address($edit['recipient'])) {
+        $errors['recipient'] = t('Please enter a valid email address or %author, %owner or %customer.', array('%author' => theme('placeholder', t('%author'))));
+      }
+      foreach ($errors as $name => $message) {
+        form_set_error($name, $message);
+      }
+
+      return count($errors) == 0;
+
+    // process the HTML form to store configuration
+    case 'submit':
+      $params = array(
+        'recipient' => $edit['recipient'],
+        'subject'   => $edit['subject'],
+        'message'   => $edit['message']);
+      return $params;
+  }
+}
+
+/**
+ * Convert completed jobs into invoices
+ *
+ */
+function erp_job_to_be_cron() {
+  // Some code here to only run once a day, probably after midnight.
+
+  $state = variable_get('job_workflow_closed', FALSE);
+
+  // If the closed state has been selected
+  if ($state) {
+    $result = db_query("SELECT * FROM {node} n INNER JOIN {erp_job} j ON n.nid = j.nid WHERE n.type = 'erp_job' AND w.sid = %d", $state);
+
+    while ($job = db_fetch_object($result)) {
+      // $history_result = db_query("SELECT h.*, u.name FROM {workflow_node_history} h LEFT JOIN {users} u ON h.uid = u.uid WHERE nid = %d ORDER BY stamp ASC", $job->nid);
+
+      // Work out billable hours
+      $billable_hours = 0;
+      while ($history = db_fetch_object($history_result)) {
+        $billable_hours += $history->billable_time;
+      }
+
+      if ($billable_hours > 0) {
+        // Construct invoice node from job
+        $node = node_load($job->nid);
+
+        unset($node->nid);
+
+        //$node->invoice_id = db_next_id('erp_invoice');
+
+        $customer = node_load($node->customer_nid);
+        $node->customer = $customer->title;
+
+        $node->comment = 0;
+        $node->name = $newnode->name;
+        $node->type = 'invoice';
+
+        $user = user_load(array('name' => variable_get('job_invoice_user', 'admin')));
+
+        $node->uid = $user->uid;
+
+        $node->title = $customer .' - '. date('d/m/Y');
+
+        unset($node->comment_count);
+
+        $node->entries['item'][0] = variable_get('erp_job_invoice_item', 0);
+        $item_node = node_load($node->entries['item'][0]);
+        $node->entries['item_desc'][0] = erp_item_desc_build($item_node);
+
+        $node->entries['qty'][0] = $billable_hours;
+
+        $node->entries['price'][0] = erp_item_price($node->entries['item'][0]) * $node->entries['qty'][0];
+
+        node_save($node);
+
+        // Now update the job to have an "invoice" pointer.
+        job_add_invoice($job, $node->nid);
+      }
+
+      // Update job to "invoiced" state, even if closed and no billable hours, so that it doesn't
+      // get selected in the future.
+    }
+  }
+}
+
+/**
+ * Implementation of hook_recurring().
+ *
+ * @param $node
+ */
+function erp_job_recurring($node) {
+  unset($node->nid);
+  unset($node->vid);
+  unset($node->job_id);
+  unset($node->printed);
+
+  $now = date_now();
+  $node->start_date = date_convert($now, DATE_OBJECT, DATE_DATETIME);
+  $now->modify("+". variable_get('erp_job_default_duration', 86400) ." seconds");
+  $node->end_date = date_convert($now, DATE_OBJECT, DATE_DATETIME);
+
+  $node->created = time();
+
+  node_save($node);
+}
+
+function erp_job_add_invoice($job, $nid) {
+  db_query("UPDATE {erp_job} SET invoice_nid = %d WHERE nid = %d", $nid, $job->nid);
+}
+
+function erp_job_date_api_fields($field) {
+  switch ($field) {
+    case 'erp_job.start_date':
+      return array(
+        'sql_type' => DATE_UNIX,
+        'tz_handling' => 'site',
+        'fromto' => array('erp_job_start_date', 'erp_job_end_date'),
+        'related_fields' => array('erp_job_start_date', 'erp_job_end_date'),
+      );
+      break;
+    case 'erp_job.end_date':
+      return array(
+        'sql_type' => DATE_UNIX,
+        'tz_handling' => 'site',
+      );
+      break;
+  }
+}
+
+function erp_job_action_info() {
+  return array(
+    'erp_job_send_email_action' => array(
+      'type' => 'erp_job',
+      'description' => t('ERP Job - Send e-mail'),
+      'configurable' => TRUE,
+      'hooks' => array(
+        'nodeapi' => array('insert', 'update'),
+        'workflow' => array('any'),
+      ),
+    ),
+  );
+}
+
+function erp_job_send_email_action_form($context) {
+  // Set default values for form.
+  if (!isset($context['recipient'])) {
+    $context['recipient'];
+  }
+  if (!isset($context['subject'])) {
+    $context['subject'] = '';
+  }
+  if (!isset($context['message'])) {
+    $context['message'] = '';
+  }
+
+  $form['recipient'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Recipient'),
+    '#default_value' => $context['recipient'],
+    '#maxlength' => '254',
+    '#description' => t('The email address to which the message should be sent OR enter %author, %owner or %customer if you would like to send an e-mail to the original author, owner or customer for a job. The \'Main contect\' for the customer will be used. Multiple addresses can be seperated by commas ","', array('%author' => '%author', '%owner' => '%owner', '%customer' => '%customer')),
+  );
+  $form['subject'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Subject'),
+    '#default_value' => $context['subject'],
+    '#maxlength' => '254',
+    '#description' => t('The subject of the message.'),
+  );
+  $form['message'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Message'),
+    '#default_value' => $context['message'],
+    '#cols' => '80',
+    '#rows' => '20',
+    '#description' => t('The message that should be sent. You may include the following variables: %site_name, %username, %node_url, %node_type, %title, %teaser, %body. Not all variables will be available in all contexts.'),
+  );
+
+  return $form;
+}
+
+/**
+ * Validate erp_job_send_email_action form submissions.
+ */
+function erp_job_send_email_action_validate($form, $form_state) {
+  // Validate the configuration form.
+  foreach (explode(',', $form_state['values']['recipient']) as $address) {
+    $temp = str_replace('%author', 'test@test.com', $address);
+    $temp = str_replace('%owner', 'test@test.com', $temp);
+    $temp = str_replace('%customer', 'test@test.com', $temp);
+
+    if (valid_email_address(trim($temp))) {
+      $new_recipients[] = $address;
+    }
+  }
+
+  if (count($new_recipients) == 0) {
+    form_set_error('recipient', t('Please enter a valid email address, %author, %customer or %owner.', array('%author' => '%author', '%customer' => '%customer', '%owner' => '%owner')));
+  }
+  else {
+    $form_state['values']['recipient'] = implode(',', $new_recipients);
+  }
+}
+
+/**
+ * Process erp_job_send_email_action form submissions.
+ */
+function erp_job_send_email_action_submit($form, $form_state) {
+  $form_values = $form_state['values'];
+  // Process the HTML form to store configuration. The keyed array that
+  // we return will be serialized to the database.
+  $params = array(
+    'recipient' => $form_values['recipient'],
+    'subject'   => $form_values['subject'],
+    'message'   => $form_values['message'],
+  );
+  return $params;
+}
+
+function erp_job_send_email_action($object, $context) {
+  switch ($context['hook']) {
+    case 'nodeapi':
+    case 'workflow':
+      $node = $context['node'];
+      break;
+  }
+
+  $recipient = $context['recipient'];
+
+  if (isset($node)) {
+    if (!isset($account)) {
+      $account = user_load(array('uid' => $node->uid));
+    }
+
+    $job_owner = user_load(array('name' => $node->owner));
+    $contacts = erp_contact_get_bytype($node->customer_nid, 3, 'email');
+
+    $recipient = str_replace('%author', $account->mail, $recipient);
+    $recipient = str_replace('%owner', $job_owner->mail, $recipient);
+    $recipient = str_replace('%customer', $contacts, $recipient);
+  }
+
+  if (!isset($account)) {
+    $account = $user;
+  }
+
+  $language = user_preferred_language($account);
+  $params = array('account' => $account, 'object' => $object, 'context' => $context);
+  if (isset($node)) {
+    $params['node'] = $node;
+  }
+
+  if (drupal_mail('system', 'action_send_email', $recipient, $language, $params)) {
+    watchdog('action', 'Sent email to %recipient', array('%recipient' => $recipient));
+  }
+  else {
+    watchdog('error', 'Unable to send email to %recipient', array('%recipient' => $recipient));
+  }
+}
+

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        var count_even = 0;
+        count_odd = 0;
+        var array = [2,6,5,8,7,9,6];
+        for(i=0; i<=6;i++){
+            if(array[i]%2 == 0){
+               count_even+= 1 ;
+            }
+            else{
+                count_odd += 1;
+            }
+        }
+        document.write("Even number:" + count_even + "<br> ");
+        document.write("Odd number:" + count_odd );
+    </script>
+</body>
+</html>

@@ -1,0 +1,1134 @@
+﻿ronak@ronak-ASUS-TUF-Gaming-F15-FX506LH-FX506LH:~$ sudo /opt/lampp/lampp start
+[sudo] password for ronak: 
+Starting XAMPP for Linux 7.4.27-2...
+XAMPP: Starting Apache...already running.
+XAMPP: Starting MySQL...already running.
+XAMPP: Starting ProFTPD...already running.
+ronak@ronak-ASUS-TUF-Gaming-F15-FX506LH-FX506LH:~$ sudo /opt/lampp/bin/mysql -u root -p
+Enter password: 
+Welcome to the MariaDB monitor.  Commands end with ; or \g.
+Your MariaDB connection id is 339
+Server version: 10.4.22-MariaDB Source distribution
+
+MariaDB [(none)]> create table Employee_details(id bigint(10) primary key,Dept_no bigint(100), Ename varchar(50), Joining_Date date, E_salary bigint(20), E_design varchar(50), E_job varchar(50),E_commission bigint(10);
+ERROR 1046 (3D000): No database selectedalary bigint(20), E_design varchar(50), E_job varchar(50
+MariaDB [(none)]> create table Employee_details(id bigint(10) primary key,Dept_no bigint(100), Ename varchar(50), Joining_Date date, E_salary bigint(20), E_design varchar(50), E_job varchar(50),E_commission bigint(10);
+ERROR 1046 (3D000): No database selected
+MariaDB [(none)]> show database
+    -> show database;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'database
+show database' at line 1
+MariaDB [(none)]> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| phpmyadmin         |
+| task1              |
+| task2              |
+| task3              |
+| test               |
++--------------------+
+8 rows in set (0.001 sec)
+
+MariaDB [(none)]> use task3;
+Database changed
+MariaDB [task3]> create table Employee(id bigint(10) primary key,Dept_no bigint(100), Ename varchar(50), Joining_Date date, E_salary bigint(20), E_job varchar(50),E_commission bigint(10), E_dept;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '' at line 1
+MariaDB [task3]> create table Employee(id bigint(10) primary key,Dept_no bigint(100), Ename varchar(50), Joining_Date date, E_salary bigint(20), E_job varchar(50),E_commission bigint(10), E_dept varchar(50));
+Query OK, 0 rows affected (0.015 sec)
+
+MariaDB [task3]> show table
+    -> show table;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'show table' at line 2
+MariaDB [task3]> show tables;
++-----------------+
+| Tables_in_task3 |
++-----------------+
+| Employee        |
++-----------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> desc Employee;
++--------------+-------------+------+-----+---------+-------+
+| Field        | Type        | Null | Key | Default | Extra |
++--------------+-------------+------+-----+---------+-------+
+| id           | bigint(10)  | NO   | PRI | NULL    |       |
+| Dept_no      | bigint(100) | YES  |     | NULL    |       |
+| Ename        | varchar(50) | YES  |     | NULL    |       |
+| Joining_Date | date        | YES  |     | NULL    |       |
+| E_salary     | bigint(20)  | YES  |     | NULL    |       |
+| E_job        | varchar(50) | YES  |     | NULL    |       |
+| E_commission | bigint(10)  | YES  |     | NULL    |       |
+| E_dept       | varchar(50) | YES  |     | NULL    |       |
++--------------+-------------+------+-----+---------+-------+
+8 rows in set (0.002 sec)
+
+MariaDB [task3]> insert into Employee(1, 10,'Ronak','2022-02-20', 5000, 'developer', 20, 'IT');
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '1, 10,'Ronak','2022-02-20', 5000, 'developer', 20, 'IT')' at line 1
+MariaDB [task3]> insert into Employee values(1, 10,'Ronak','2022-02-20', 5000, 'developer', 20, 'IT');
+Query OK, 1 row affected (0.005 sec)
+
+MariaDB [task3]> desc Employee;
++--------------+-------------+------+-----+---------+-------+
+| Field        | Type        | Null | Key | Default | Extra |
++--------------+-------------+------+-----+---------+-------+
+| id           | bigint(10)  | NO   | PRI | NULL    |       |
+| Dept_no      | bigint(100) | YES  |     | NULL    |       |
+| Ename        | varchar(50) | YES  |     | NULL    |       |
+| Joining_Date | date        | YES  |     | NULL    |       |
+| E_salary     | bigint(20)  | YES  |     | NULL    |       |
+| E_job        | varchar(50) | YES  |     | NULL    |       |
+| E_commission | bigint(10)  | YES  |     | NULL    |       |
+| E_dept       | varchar(50) | YES  |     | NULL    |       |
++--------------+-------------+------+-----+---------+-------+
+8 rows in set (0.001 sec)
+
+MariaDB [task3]> select * from Employee;
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+1 row in set (0.000 sec)
+
+MariaDB [task3]> insert into Employee(2, 20,'jatin','2022-02-20', 6000, 'developer', 10, 'IT'),(3, 30,'somay','2020-02-20', 3000, 'marketing', 20, 'sales'),(4, 40,'mradul','2022-02-20', 60000, 'team lead', 10, 'software'),(5, 50,'ram','2012-02-20', 6000, 'manager', 20, 'Admin'),(6, 60,'jatin','2022-02-20', 50000, 'clerk', 5, 'banking');
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '2, 20,'jatin','2022-02-20', 6000, 'developer', 10, 'IT'),(3, 30,'somay','2020...' at line 1
+MariaDB [task3]> insert into Employee values(2, 20,'jatin','2022-02-20', 6000, 'developer', 10, 'IT'),(3, 30,'somay','2020-02-20', 3000, 'marketing', 20, 'sales'),(4, 40,'mradul','2022-02-20', 60000, 'team lead', 10, 'software'),(5, 50,'ram','2012-02-20', 6000, 'manager', 20, 'Admin'),(6, 60,'jatin','2022-02-20', 50000, 'clerk', 5, 'banking');
+Query OK, 5 rows affected (0.005 sec)
+Records: 5  Duplicates: 0  Warnings: 0
+
+MariaDB [task3]> select * from Employee;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename,E_job form Employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Employee' at line 1
+MariaDB [task3]> select Ename,E_job from Employee;
++--------+-----------+
+| Ename  | E_job     |
++--------+-----------+
+| Ronak  | developer |
+| jatin  | developer |
+| somay  | marketing |
+| mradul | team lead |
+| ram    | manager   |
+| jatin  | clerk     |
++--------+-----------+
+6 rows in set (0.000 sec)
+
+MariaDB [task3]> select Ename, E_salary from Employee;
++--------+----------+
+| Ename  | E_salary |
++--------+----------+
+| Ronak  |     5000 |
+| jatin  |     6000 |
+| somay  |     3000 |
+| mradul |    60000 |
+| ram    |     6000 |
+| jatin  |    50000 |
++--------+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select id, E_salary from Employee;
++----+----------+
+| id | E_salary |
++----+----------+
+|  1 |     5000 |
+|  2 |     6000 |
+|  3 |     3000 |
+|  4 |    60000 |
+|  5 |     6000 |
+|  6 |    50000 |
++----+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename,sum(E_salary) from Employee;
++-------+---------------+
+| Ename | sum(E_salary) |
++-------+---------------+
+| Ronak |        130000 |
++-------+---------------+
+1 row in set (0.004 sec)
+
+MariaDB [task3]> select from Employee where Dept_no = 10;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'from Employee where Dept_no = 10' at line 1
+MariaDB [task3]> select from Dept_no where Dept_no = 10;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'from Dept_no where Dept_no = 10' at line 1
+MariaDB [task3]> select Ename from Employee where Dept_no = 10;
++-------+
+| Ename |
++-------+
+| Ronak |
++-------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee where E_job = clerk and E_salary >3000;
+ERROR 1054 (42S22): Unknown column 'clerk' in 'where clause'
+MariaDB [task3]> select Ename from Employee where E_job = 'clerk' and E_salary >3000;
++-------+
+| Ename |
++-------+
+| jatin |
++-------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select Ename, id from Employee where E_commission; 
++--------+----+
+| Ename  | id |
++--------+----+
+| Ronak  |  1 |
+| jatin  |  2 |
+| somay  |  3 |
+| mradul |  4 |
+| ram    |  5 |
+| jatin  |  6 |
++--------+----+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename, id from Employee where E_commission is not null; 
++--------+----+
+| Ename  | id |
++--------+----+
+| Ronak  |  1 |
+| jatin  |  2 |
+| somay  |  3 |
+| mradul |  4 |
+| ram    |  5 |
+| jatin  |  6 |
++--------+----+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee where E_commission > 10; 
++-------+
+| Ename |
++-------+
+| Ronak |
+| somay |
+| ram   |
++-------+
+3 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee where E_commission is null; 
+Empty set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee where E_job = 'clerk' or E_dept = 'sales' and E_salary >3000;
++-------+
+| Ename |
++-------+
+| jatin |
++-------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select * from emp where Joining_Date between ‘30-jun-2000’ and ‘31-dec-2018’;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'dec-2018’' at line 1
+MariaDB [task3]> select * from Employee where Joining_Date between ‘30-jun-2000’ and ‘31-dec-2018’;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'dec-2018’' at line 1
+MariaDB [task3]> select * from Employee where Joining_Date between ‘2000-01-01’ and ‘2018-01-01’;
+ERROR 1054 (42S22): Unknown column '‘2000' in 'where clause'
+MariaDB [task3]> select * from Employee where Joining_Date between ‘2000-02-20’ and ‘2018-01-20’;
+ERROR 1054 (42S22): Unknown column '‘2000' in 'where clause'
+MariaDB [task3]> select getdate() from Employee; 
+ERROR 1558 (HY000): Column count of mysql.proc is wrong. Expected 21, found 20. Created with MariaDB 100108, now running 100422. Please use mysql_upgrade to fix this error
+MariaDB [task3]> select sysdate from Employee; 
+ERROR 1054 (42S22): Unknown column 'sysdate' in 'field list'
+MariaDB [task3]> select sysdate(); 
++---------------------+
+| sysdate()           |
++---------------------+
+| 2022-03-24 16:49:42 |
++---------------------+
+1 row in set (0.000 sec)
+
+MariaDB [task3]> select user from user;
+ERROR 1146 (42S02): Table 'task3.user' doesn't exist
+MariaDB [task3]> SELECT user FROM user;
+ERROR 1146 (42S02): Table 'task3.user' doesn't exist
+MariaDB [task3]> SELECT user FROM .user;
+ERROR 1146 (42S02): Table 'task3.user' doesn't exist
+MariaDB [task3]> select Ename from Employee where Dept_no in (10, 20, 40) or E_job in ('clerk', 'salesman');
++--------+
+| Ename  |
++--------+
+| Ronak  |
+| jatin  |
+| mradul |
+| jatin  |
++--------+
+4 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee like Ename = 'S%';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'like Ename = 'S%'' at line 1
+MariaDB [task3]> select Ename from Employee like Ename = '_S%';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'like Ename = '_S%'' at line 1
+MariaDB [task3]> select Ename from Employee where Ename like '_S%';
+Empty set (0.005 sec)
+
+MariaDB [task3]> select Ename from Employee where Ename like 'S%';
++-------+
+| Ename |
++-------+
+| somay |
++-------+
+1 row in set (0.000 sec)
+
+MariaDB [task3]> select Ename from Employee where Ename like '_A%';
++-------+
+| Ename |
++-------+
+| jatin |
+| ram   |
+| jatin |
++-------+
+3 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee where length(Ename) = 5;
++-------+
+| Ename |
++-------+
+| Ronak |
+| jatin |
+| somay |
+| jatin |
++-------+
+4 rows in set (0.003 sec)
+
+MariaDB [task3]> select Ename from Employee where E_job not in ('manager');
++--------+
+| Ename  |
++--------+
+| Ronak  |
+| jatin  |
+| somay  |
+| mradul |
+| jatin  |
++--------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee where E_job not in ('sales', 'clerk', analyst);
+ERROR 1054 (42S22): Unknown column 'analyst' in 'where clause'
+MariaDB [task3]> select Ename from Employee where E_job not in('sales', 'clerk',' analyst');
++--------+
+| Ename  |
++--------+
+| Ronak  |
+| jatin  |
+| somay  |
+| mradul |
+| ram    |
++--------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select count (*) from Employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '*) from Employee' at line 1
+MariaDB [task3]> select count (id) from Employee;
+ERROR 1558 (HY000): Column count of mysql.proc is wrong. Expected 21, found 20. Created with MariaDB 100108, now running 100422. Please use mysql_upgrade to fix this error
+MariaDB [task3]> select count(id) from Employee;
++-----------+
+| count(id) |
++-----------+
+|         6 |
++-----------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select sum(E_salary) from Employee;
++---------------+
+| sum(E_salary) |
++---------------+
+|        130000 |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select max(E_salary) from Employee;
++---------------+
+| max(E_salary) |
++---------------+
+|         60000 |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select min(E_salary) from Employee;
++---------------+
+| min(E_salary) |
++---------------+
+|          3000 |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select avg(E_salary) from Employee;
++---------------+
+| avg(E_salary) |
++---------------+
+|    21666.6667 |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select max(E_salary) from Employee where E_job = 'cleark';
++---------------+
+| max(E_salary) |
++---------------+
+|          NULL |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select max(E_salary) from Employee where E_job = 'clerk';
++---------------+
+| max(E_salary) |
++---------------+
+|         50000 |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select max(E_salary) from Employee where Dept_no = '20';
++---------------+
+| max(E_salary) |
++---------------+
+|          6000 |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select min(E_salary) from Employee where E_job = 'sales';
++---------------+
+| min(E_salary) |
++---------------+
+|          NULL |
++---------------+
+1 row in set (0.000 sec)
+
+MariaDB [task3]> select avg(E_salary) from Employee where E_job = 'manager';
++---------------+
+| avg(E_salary) |
++---------------+
+|     6000.0000 |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select sum(E_salary) from Employee where E_job = 'analyst' and Dept_no = 40;
++---------------+
+| sum(E_salary) |
++---------------+
+|          NULL |
++---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select ename from Employee order by E_salary;
++--------+
+| ename  |
++--------+
+| somay  |
+| Ronak  |
+| jatin  |
+| ram    |
+| jatin  |
+| mradul |
++--------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select ename from Employee order by E_salary desc;
++--------+
+| ename  |
++--------+
+| mradul |
+| jatin  |
+| jatin  |
+| ram    |
+| Ronak  |
+| somay  |
++--------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename from Employee order by Ename;
++--------+
+| Ename  |
++--------+
+| jatin  |
+| jatin  |
+| mradul |
+| ram    |
+| Ronak  |
+| somay  |
++--------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select id, Ename, Dept_no, E_salary from order by Ename, Dept_no, E_salary; 
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'order by Ename, Dept_no, E_salary' at line 1
+MariaDB [task3]> select id, Ename, Dept_no, E_salary from Employee order by Ename, Dept_no, E_salary; 
++----+--------+---------+----------+
+| id | Ename  | Dept_no | E_salary |
++----+--------+---------+----------+
+|  2 | jatin  |      20 |     6000 |
+|  6 | jatin  |      60 |    50000 |
+|  4 | mradul |      40 |    60000 |
+|  5 | ram    |      50 |     6000 |
+|  1 | Ronak  |      10 |     5000 |
+|  3 | somay  |      30 |     3000 |
++----+--------+---------+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename, E_salary*12 from emp order by E_salary desc;
+ERROR 1146 (42S02): Table 'task3.emp' doesn't exist
+MariaDB [task3]> select Ename, E_salary*12 from emp order by E_salary desc;
+ERROR 1146 (42S02): Table 'task3.emp' doesn't exist
+MariaDB [task3]> 
+MariaDB [task3]> select Ename, E_salary*12 from emp order by E_salary;
+ERROR 1146 (42S02): Table 'task3.emp' doesn't exist
+MariaDB [task3]> show tables;
++-----------------+
+| Tables_in_task3 |
++-----------------+
+| Employee        |
++-----------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select Ename, E_salary*12 from employee order by E_salary;
+ERROR 1146 (42S02): Table 'task3.employee' doesn't exist
+MariaDB [task3]> select Ename, E_salary * 12 from employee order by E_salary;
+ERROR 1146 (42S02): Table 'task3.employee' doesn't exist
+MariaDB [task3]> select Ename, E_salary * 12 from Employee order by E_salary;
++--------+---------------+
+| Ename  | E_salary * 12 |
++--------+---------------+
+| somay  |         36000 |
+| Ronak  |         60000 |
+| jatin  |         72000 |
+| ram    |         72000 |
+| jatin  |        600000 |
+| mradul |        720000 |
++--------+---------------+
+6 rows in set (0.002 sec)
+
+MariaDB [task3]> select Dept_no , count(Dept_no), form Employee gropu by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'gropu by Dept_no' at line 1
+MariaDB [task3]> select Dept_no , count(Dept_no), from Employee group by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'from Employee group by Dept_no' at line 1
+MariaDB [task3]> select Dept_no, count(Dept_no), from Employee group by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'from Employee group by Dept_no' at line 1
+MariaDB [task3]> select Dept_no, count(Dept_no) from Employee group by Dept_no;
++---------+----------------+
+| Dept_no | count(Dept_no) |
++---------+----------------+
+|      10 |              1 |
+|      20 |              1 |
+|      30 |              1 |
+|      40 |              1 |
+|      50 |              1 |
+|      60 |              1 |
++---------+----------------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select job, count(E_job) form Employee group by E_job;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Employee group by E_job' at line 1
+MariaDB [task3]> select job, count(E_job) from Employee group by E_job;
+ERROR 1054 (42S22): Unknown column 'job' in 'field list'
+MariaDB [task3]> select E_job, count(E_job) from Employee group by E_job;
++-----------+--------------+
+| E_job     | count(E_job) |
++-----------+--------------+
+| clerk     |            1 |
+| developer |            2 |
+| manager   |            1 |
+| marketing |            1 |
+| team lead |            1 |
++-----------+--------------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select Dept_no, sum(E_salary) from Employee by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'by Dept_no' at line 1
+MariaDB [task3]> select Dept_no, sum(E_salary) from Employee group by Dept_no;
++---------+---------------+
+| Dept_no | sum(E_salary) |
++---------+---------------+
+|      10 |          5000 |
+|      20 |          6000 |
+|      30 |          3000 |
+|      40 |         60000 |
+|      50 |          6000 |
+|      60 |         50000 |
++---------+---------------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select Dept_no, max(E_salary) from Employee group by Dept_no;
++---------+---------------+
+| Dept_no | max(E_salary) |
++---------+---------------+
+|      10 |          5000 |
+|      20 |          6000 |
+|      30 |          3000 |
+|      40 |         60000 |
+|      50 |          6000 |
+|      60 |         50000 |
++---------+---------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_job, sum(E_salary) from Employee group by E_job;
++-----------+---------------+
+| E_job     | sum(E_salary) |
++-----------+---------------+
+| clerk     |         50000 |
+| developer |         11000 |
+| manager   |          6000 |
+| marketing |          3000 |
+| team lead |         60000 |
++-----------+---------------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_job, sum(E_salary) from Employee;
++-----------+---------------+
+| E_job     | sum(E_salary) |
++-----------+---------------+
+| developer |        130000 |
++-----------+---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select E_job, min(E_salary) from Employee group by E_job;
++-----------+---------------+
+| E_job     | min(E_salary) |
++-----------+---------------+
+| clerk     |         50000 |
+| developer |          5000 |
+| manager   |          6000 |
+| marketing |          3000 |
+| team lead |         60000 |
++-----------+---------------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select Dept_no, count(Dept_no) from Employee group by Dept_no having count (*) >3;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '*) >3' at line 1
+MariaDB [task3]> select Dept_no, count(Dept_no) from Employee group by Dept_no having count (*)>3;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '*)>3' at line 1
+MariaDB [task3]> desc employee
+    -> desc employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'desc employee' at line 2
+MariaDB [task3]> desc employee;
+ERROR 1146 (42S02): Table 'task3.employee' doesn't exist
+MariaDB [task3]> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| phpmyadmin         |
+| task1              |
+| task2              |
+| task3              |
+| test               |
++--------------------+
+8 rows in set (0.005 sec)
+
+MariaDB [task3]> use task3;
+Database changed
+MariaDB [task3]> select E_job, sum(E_salary) from Employee group by having sum(E_salary)>40000;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'having sum(E_salary)>40000' at line 1
+MariaDB [task3]> select * Employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Employee' at line 1
+MariaDB [task3]> select * Employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Employee' at line 1
+MariaDB [task3]> select * from Employee;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_job, sum(E_salary) from Employee group by having (E_salary)>40000;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'having (E_salary)>40000' at line 1
+MariaDB [task3]> select Ename from Employee where E_salary = (select max(E_salary) from Employee);
++--------+
+| Ename  |
++--------+
+| mradul |
++--------+
+1 row in set (0.003 sec)
+
+MariaDB [task3]> select upper(Ename) from Employee;
++--------------+
+| upper(Ename) |
++--------------+
+| RONAK        |
+| JATIN        |
+| SOMAY        |
+| MRADUL       |
+| RAM          |
+| JATIN        |
++--------------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select lower(Ename) from Employee;
++--------------+
+| lower(Ename) |
++--------------+
+| ronak        |
+| jatin        |
+| somay        |
+| mradul       |
+| ram          |
+| jatin        |
++--------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select length(Ename) from Employee;
++---------------+
+| length(Ename) |
++---------------+
+|             5 |
+|             5 |
+|             5 |
+|             6 |
+|             3 |
+|             5 |
++---------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> 
+
+
+
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------------------------------1!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!111
+MariaDB [task3]> select E_job, sum(E_salary) from Employee group by E_job;
++-----------+---------------+
+| E_job     | sum(E_salary) |
++-----------+---------------+
+| clerk     |         50000 |
+| developer |         11000 |
+| manager   |          6000 |
+| marketing |          3000 |
+| team lead |         60000 |
++-----------+---------------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_job, sum(E_salary) from Employee;
++-----------+---------------+
+| E_job     | sum(E_salary) |
++-----------+---------------+
+| developer |        130000 |
++-----------+---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select E_job, min(E_salary) from Employee group by E_job;
++-----------+---------------+
+| E_job     | min(E_salary) |
++-----------+---------------+
+| clerk     |         50000 |
+| developer |          5000 |
+| manager   |          6000 |
+| marketing |          3000 |
+| team lead |         60000 |
++-----------+---------------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select Dept_no, count(Dept_no) from Employee group by Dept_no having count (*) >3;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '*) >3' at line 1
+MariaDB [task3]> select Dept_no, count(Dept_no) from Employee group by Dept_no having count (*)>3;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '*)>3' at line 1
+MariaDB [task3]> desc employee
+    -> desc employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'desc employee' at line 2
+MariaDB [task3]> desc employee;
+ERROR 1146 (42S02): Table 'task3.employee' doesn't exist
+MariaDB [task3]> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| phpmyadmin         |
+| task1              |
+| task2              |
+| task3              |
+| test               |
++--------------------+
+8 rows in set (0.005 sec)
+
+MariaDB [task3]> use task3;
+Database changed
+MariaDB [task3]> select E_job, sum(E_salary) from Employee group by having sum(E_salary)>40000;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'having sum(E_salary)>40000' at line 1
+MariaDB [task3]> select * Employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Employee' at line 1
+MariaDB [task3]> select * Employee;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Employee' at line 1
+MariaDB [task3]> select * from Employee;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_job, sum(E_salary) from Employee group by having (E_salary)>40000;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'having (E_salary)>40000' at line 1
+MariaDB [task3]> select Ename from Employee where E_salary = (select max(E_salary) from Employee);
++--------+
+| Ename  |
++--------+
+| mradul |
++--------+
+1 row in set (0.003 sec)
+
+MariaDB [task3]> select upper(Ename) from Employee;
++--------------+
+| upper(Ename) |
++--------------+
+| RONAK        |
+| JATIN        |
+| SOMAY        |
+| MRADUL       |
+| RAM          |
+| JATIN        |
++--------------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select lower(Ename) from Employee;
++--------------+
+| lower(Ename) |
++--------------+
+| ronak        |
+| jatin        |
+| somay        |
+| mradul       |
+| ram          |
+| jatin        |
++--------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select length(Ename) from Employee;
++---------------+
+| length(Ename) |
++---------------+
+|             5 |
+|             5 |
+|             5 |
+|             6 |
+|             3 |
+|             5 |
++---------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> Select * from student where name = ‘Ronak’.
+    -> Select * from student where name = ‘Ronak’;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Select * from student where name = ‘Ronak’' at line 2
+MariaDB [task3]> Select * from student where name = ‘Ronak';
+    '> Select * from student where name = ‘Ronak';
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near '';
+Select * from student where name = ‘Ronak'' at line 1
+MariaDB [task3]> Select * from Employee where name = ‘Ronak’; 
+ERROR 1054 (42S22): Unknown column 'name' in 'where clause'
+MariaDB [task3]> Select * from Employee where Ename = ‘Ronak’;
+ERROR 1054 (42S22): Unknown column '‘Ronak’' in 'where clause'
+MariaDB [task3]> select * from Employee where Ename = 'ronak';
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select * from Employee where id = 1 and Ename = 'ronak';
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select * from Employee where Ename in ('ronak', 'somay');
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
+|  3 |      30 | somay | 2020-02-20   |     3000 | marketing |           20 | sales  |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+2 rows in set (0.001 sec)
+
+MariaDB [task3]> select * from Employee where Ename not in ('ronak', 'somay');
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+4 rows in set (0.000 sec)
+
+MariaDB [task3]> select * from Employee where id between 1 and 10;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select * from Employee where Ename like 'R%';
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
+|  5 |      50 | ram   | 2012-02-20   |     6000 | manager   |           20 | Admin  |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+2 rows in set (0.001 sec)
+
+MariaDB [task3]> select * from Employee where Ename like '_R%';
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select * from Employee where Ename like 'R_%';
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+| id | Dept_no | Ename | Joining_Date | E_salary | E_job     | E_commission | E_dept |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+|  1 |      10 | Ronak | 2022-02-20   |     5000 | developer |           20 | IT     |
+|  5 |      50 | ram   | 2012-02-20   |     6000 | manager   |           20 | Admin  |
++----+---------+-------+--------------+----------+-----------+--------------+--------+
+2 rows in set (0.000 sec)
+
+MariaDB [task3]> select * from Employee limit 5;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select * from Employee order by Ename asc;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+6 rows in set (0.005 sec)
+
+MariaDB [task3]> select * from Employee order by Ename desc;
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+| id | Dept_no | Ename  | Joining_Date | E_salary | E_job     | E_commission | E_dept   |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+|  3 |      30 | somay  | 2020-02-20   |     3000 | marketing |           20 | sales    |
+|  1 |      10 | Ronak  | 2022-02-20   |     5000 | developer |           20 | IT       |
+|  5 |      50 | ram    | 2012-02-20   |     6000 | manager   |           20 | Admin    |
+|  4 |      40 | mradul | 2022-02-20   |    60000 | team lead |           10 | software |
+|  2 |      20 | jatin  | 2022-02-20   |     6000 | developer |           10 | IT       |
+|  6 |      60 | jatin  | 2022-02-20   |    50000 | clerk     |            5 | banking  |
++----+---------+--------+--------------+----------+-----------+--------------+----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_dept as id , Ename as Ename from E_job
+    -> select E_dept as id , Ename as Ename from E_job;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'select E_dept as id , Ename as Ename from E_job' at line 2
+MariaDB [task3]> select E_dept as id , Ename as Ename from E_job;
+ERROR 1146 (42S02): Table 'task3.E_job' doesn't exist
+MariaDB [task3]> select E_dept as id from Employee;
++----------+
+| id       |
++----------+
+| IT       |
+| IT       |
+| sales    |
+| software |
+| Admin    |
+| banking  |
++----------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select Ename , sum(Dept_no) as 
+[1]+  Stopped                 sudo /opt/lampp/bin/mysql -u root -p
+ronak@ronak-ASUS-TUF-Gaming-F15-FX506LH-FX506LH:~$ sudo /opt/lampp/bin/mysql -u root -p
+[sudo] password for ronak: 
+Sorry, try again.
+[sudo] password for ronak: 
+Sorry, try again.
+[sudo] password for ronak: 
+\sudo: 3 incorrect password attempts
+ronak@ronak-ASUS-TUF-Gaming-F15-FX506LH-FX506LH:~$ 
+ronak@ronak-ASUS-TUF-Gaming-F15-FX506LH-FX506LH:~$ sudo /opt/lampp/lampp start
+[sudo] password for ronak: 
+Starting XAMPP for Linux 7.4.27-2...
+XAMPP: Starting Apache...already running.
+XAMPP: Starting MySQL...already running.
+XAMPP: Starting ProFTPD...already running.
+ronak@ronak-ASUS-TUF-Gaming-F15-FX506LH-FX506LH:~$ sudo /opt/lampp/bin/mysql -u root -p
+Enter password: 
+Welcome to the MariaDB monitor.  Commands end with ; or \g.
+Your MariaDB connection id is 452
+Server version: 10.4.22-MariaDB Source distribution
+
+Copyright (c) 2000, 2018, Oracle, MariaDB Corporation Ab and others.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+MariaDB [(none)]> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| phpmyadmin         |
+| task1              |
+| task2              |
+| task3              |
+| test               |
++--------------------+
+8 rows in set (0.003 sec)
+
+MariaDB [(none)]> use task3;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+MariaDB [task3]> select Ename , sum(Dept_no) as 'total working hour' from Employee group by Ename;
++--------+--------------------+
+| Ename  | total working hour |
++--------+--------------------+
+| jatin  |                 80 |
+| mradul |                 40 |
+| ram    |                 50 |
+| Ronak  |                 10 |
+| somay  |                 30 |
++--------+--------------------+
+5 rows in set (0.004 sec)
+
+MariaDB [task3]> 
+MariaDB [task3]> select Ename , sum(Dept_no) as 'total working hour' from Employee group by Ename having sum(Dept_no) >5;
++--------+--------------------+
+| Ename  | total working hour |
++--------+--------------------+
+| jatin  |                 80 |
+| mradul |                 40 |
+| ram    |                 50 |
+| Ronak  |                 10 |
+| somay  |                 30 |
++--------+--------------------+
+5 rows in set (0.004 sec)
+
+MariaDB [task3]> select Ename , sum(Dept_no) as 'total working hour' from Employee group by Ename having sum(Dept_no) >50;
++-------+--------------------+
+| Ename | total working hour |
++-------+--------------------+
+| jatin |                 80 |
++-------+--------------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> use task2;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+MariaDB [task2]> desc databases;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'databases' at line 1
+MariaDB [task2]> show databases;
++--------------------+
+| Database           |
++--------------------+
+| information_schema |
+| mysql              |
+| performance_schema |
+| phpmyadmin         |
+| task1              |
+| task2              |
+| task3              |
+| test               |
++--------------------+
+8 rows in set (0.001 sec)
+
+MariaDB [task2]> use task2;
+Database changed
+MariaDB [task2]> show tables;
++-----------------+
+| Tables_in_task2 |
++-----------------+
+| agent           |
+| agents          |
+| customer        |
+| date            |
+| demo            |
+| ecommerce       |
+| hpspital        |
+| office          |
+| sales           |
+| seller          |
+| store           |
++-----------------+
+11 rows in set (0.001 sec)
+
+MariaDB [task2]> select * from agent;
++------+---------+------+---------+-------------+-------+
+| id   | name    | code | country | phonenumber | lname |
++------+---------+------+---------+-------------+-------+
+|   10 | ronak   |  255 | kota    |       50000 | 25    |
+|   20 | shubham |  255 | india   |       60000 | jian  |
+|   30 | shivam  |  255 | india   |       20000 | kumar |
+|   40 | jatin   |  255 | japan   |       30000 | kumar |
+|   50 | somay   |  255 | china   |       50000 | garg  |
+|   60 | RJ      |  255 | india   |       35000 | jain  |
+|   70 | raj     |  255 | america |       55000 | jain  |
+|   80 | Raja    |  255 | india   |       35000 | garg  |
+|   90 | mradul  |  255 | uk      |       50000 | garg  |
+|  100 | ronak   |  255 | usa     |       50000 | kumar |
++------+---------+------+---------+-------------+-------+
+10 rows in set (0.003 sec)
+
+MariaDB [task2]> select * from demo;
+Empty set (0.003 sec)
+
+MariaDB [task2]> select * from customer;
++-----+------------+---------+---------+------------+--------+
+| id  | name       | city    | country | phone_no   | mode   |
++-----+------------+---------+---------+------------+--------+
+|  10 | ronak      | jaipur  | india   | 9264587820 | ofline |
+|  20 | somay      | jaipur  | india   | 9264587820 | online |
+|  30 | ram        | kota    | india   |  926458720 | ofline |
+|  40 | raju       | punr    | india   | 9269587820 | online |
+|  50 | shanu      | jaipur  | india   | 9264587820 | online |
+|  60 | jain       | mumbai  | india   |  926487920 | ofline |
+|  70 | ronak Jain | florida | usa     | 7264587820 | online |
+|  80 | shubham    | jaipur  | india   | 9264586500 | ofline |
+|  90 | ravi       | pune    | india   | 9265587820 | online |
+| 100 | RJ         | jaipur  | india   | 9264587820 | ofline |
++-----+------------+---------+---------+------------+--------+
+10 rows in set (0.004 sec)
+

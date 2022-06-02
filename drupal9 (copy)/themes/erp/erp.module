@@ -1,0 +1,1368 @@
+<?php
+// $Id: erp.module,v 1.11.2.31 2011/01/14 00:55:03 simon Exp $
+
+/**
+ * @file
+ *
+ * erp project system wide functions
+ *
+ */
+
+/**
+ * erp module help fuction
+ *
+ * @param unknown_type $section
+ * @return unknown
+ */
+function erp_help() {
+  switch ($path) {
+    case 'admin/modules#description':
+      // This description is shown in the listing at admin/modules.
+      return t('ERP module.');
+      break;
+  }
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function erp_perm() {
+  return array('access erp', 'admin erp', 'erp quick find block');
+}
+
+/**
+ * Implememtation of hook_init().
+ */
+function erp_init() {
+  static $erp_home;
+
+  if (!$erp_home) {
+    $erp_home = drupal_get_path('module', 'erp');
+  }
+
+  drupal_add_css($erp_home .'/erp.css');
+
+  // TODO this didn't work for overriding autocomplete,
+  // find a nicer way to do it than copying over the .js
+  //drupal_add_js($erp_home .'/erp.js');
+}
+
+/**
+ * Menu details
+ *
+ */
+function erp_menu() {
+  $items['admin/erp'] = array(
+    'access arguments' => array('admin erp'),
+    'title' => 'Erp',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_initial_setup'),
+  );
+
+  $items['erp'] = array(
+    'access arguments' => array('access erp'),
+    'title' => 'Erp',
+    'page callback' => 'erp_overview'
+  );
+
+  $items['erp/linejs/%'] = array(
+    'page callback' => 'erp_line_js',
+    'page arguments' => array(2),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['erp/quickjump/list'] = array(
+    'access arguments' => array('erp quick find block'),
+    'page callback' => 'erp_quickjump_list',
+    'type' => MENU_CALLBACK
+  );
+
+  $items['user/%user/erp'] = array(
+    'title' => 'Erp',
+    'page callback' => 'erp_overview',
+    'access arguments' => array('access erp'),
+    'type' => MENU_LOCAL_TASK
+  );
+
+  $items['user/%user/erp/overview'] = array(
+    'title' => 'Overview',
+    'page callback' => 'erp_overview',
+    'page arguments' => array(1),
+    'access arguments' => array('access erp'),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10
+  );
+
+  return $items;
+}
+
+function erp_block($op = 'list', $delta = 0) {
+  if ($op == 'list') {
+    $blocks[0]['info'] = t('ERP Quick Jump');
+    return $blocks;
+  }
+  elseif ($op == 'view' && user_access('erp quick find block')) {
+    $block['content'] = drupal_get_form('erp_quickjump_form');
+    $block['subject'] = t('ERP Quick Jump');
+    return $block;
+  }
+}
+
+/**
+ * Helper Function to display a form
+ *
+ */
+function erp_quickjump_form($form_state) {
+  $form = array();
+
+  $form['#attributes'] = array('class' => 'customer-load');
+
+  $form['quickjump']['jump'] =
+    array('#type' => 'textfield',
+          '#size' => 15,
+          '#maxlength' => 128,
+          '#default_value' => '');
+
+  $form['quickjump']['submit'] =
+    array('#type' => 'submit',
+          '#value' => t('Load'));
+
+  return $form;
+}
+
+function erp_quickjump_form_submit($form, &$form_state) {
+  $jump = $form_state['values']['jump'];
+
+  list($type, $number) = explode('-', $jump);
+
+  $type = strtolower($type);
+
+  if (ctype_alpha($type) && is_numeric($number)) {
+    $destination = array_pop(module_invoke_all('erp_quickjump_'. $type, $number));
+  }
+  if ($destination) {
+    if (strstr($destination, '/')) {
+      list($path, $nid) = explode('/', $destination);
+      $node = node_load($nid);
+      if ($node->customer_nid) {
+        $customer = node_load($node->customer_nid);
+        erp_customer_set_current($customer);
+      }
+      elseif ($node->type == 'erp_customer') {
+        erp_customer_set_current($node);
+      }
+    }
+    drupal_goto($destination);
+  }
+  else {
+    drupal_goto('erp/quickjump/list');
+  }
+}
+
+function erp_quickjump_list() {
+  $list = module_invoke_all('erp_quickjump_info');
+
+  $output .= '<div class="heading">'. t('Unknown quick jump type. The list of available quick jump codes is:') .'</div>';
+
+  foreach ($list as $module => $text) {
+    $output .= '<div class="text">'. $text .'</div>';
+  }
+  return $output;
+}
+
+function erp_nid_to_id($type, $nid) {
+  if ($nid) {
+    $node = node_load($nid);
+
+    $type_id = $type ."_id";
+
+    return $node->{$type_id};
+  }
+  return FALSE;
+}
+
+function erp_id_to_nid($type, $id) {
+  $type_id = $type ."_id";
+
+  $sql = "SELECT nid FROM {erp_$type} WHERE $type_id = %d";
+
+  $result = db_query($sql, $id);
+  $nid = db_result($result);
+
+  return $nid;
+}
+
+/**
+ * Close an invoice/po/etc
+ */
+function erp_close($type, $nid) {
+  db_query("UPDATE {erp_$type} SET ". $type ."_status = 'C' WHERE nid = %d", $nid);
+}
+
+/**
+ *  Open an invoice/po/etc
+ */
+function erp_open($type, $nid) {
+  db_query("UPDATE {erp_$type} SET ". $type ."_status = '0' WHERE nid = %d", $nid);
+}
+
+/**
+ * Provide some basic overview information about the erp system.
+ * Note, that using module_invoke_all might be preferable, but would then need some
+ * sort of ordering system.
+ *
+ * TODO: This should  probably converted to a per user commission style statement.
+ *
+ * @return unknown
+ */
+function erp_overview() {
+  drupal_set_title(t('ERP Overview'));
+
+  $output = '<div class="erp-details">';
+
+  if (module_exists('erp_customer') or module_exists('erp_contact') or module_exists('erp_job') or module_exists('erp_timesheet')) {
+    $output .= '<div class="erp-customers">';
+    $output .= '<h2>'. t('Customers') .'</h2>';
+
+    if (module_exists('erp_customer')) {
+
+      // Customers
+      $customer_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_customer}")));
+
+      $output .= '<div class="erp-customer-details">';
+      $output .= 'Customer Count: '. $customer_count;
+      $output .= '</div>';
+    }
+
+    if (module_exists('erp_contact')) {
+      $contact_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_contact}")));
+
+      $output .= '<div class="erp-contact-details">';
+      $output .= 'Contact Count: '. $contact_count;
+      $output .= '</div>';
+    }
+
+    // Jobs & Timesheets
+    if (module_exists('erp_job')) {
+      $job_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_job}")));
+
+      $output .= '<div class="erp-job-details">';
+      $output .= 'Job Count: '. $job_count;
+      $output .= '</div>';
+    }
+
+    if (module_exists('erp_timesheet')) {
+      $timesheet_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_timesheet}")));
+
+      $output .= '<div class="erp-timesheet-details">';
+      $output .= 'Timesheet Count: '. $timesheet_count;
+      $output .= '</div>';
+    }
+
+    $output .= '</div>';
+  }
+
+  if (module_exists('erp_cash_sale') or module_exists('erp_invoice') or module_exists('erp_payment')) {
+
+    $output .= '<div class="erp-income">';
+    $output .= '<h2>'. t('Income') .'</h2>';
+
+    // Income
+    if (module_exists('erp_cash_sale')) {
+      $cash_sale_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_cash_sale}")));
+
+      $output .= '<div class="erp-cash-sale-details">';
+      $output .= 'Cash Sale Count: '. $cash_sale_count;
+      $output .= '</div>';
+    }
+
+    // Get amount of outstanding invoices
+    if (module_exists('erp_invoice')) {
+      $invoice_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_invoice}")));
+      $invoice_outstanding = array_pop(db_fetch_array(db_query("SELECT sum(total) FROM {erp_invoice} WHERE invoice_status <> 'C'")));
+
+      $output .= '<div class="erp-invoice-details">';
+      $output .= 'Invoice Count: '. $invoice_count;
+      $output .= '</div>';
+
+      $output .= '<div class="erp-invoice-outstanding">';
+      $output .= 'Invoice Outstanding: '. erp_symbol() . erp_currency($invoice_outstanding);
+      $output .= '</div>';
+    }
+
+    if (module_exists('erp_payment')) {
+      $payment_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_payment}")));
+
+      $output .= '<div class="erp-payment-details">';
+      $output .= 'Payment Count: '. $payment_count;
+      $output .= '</div>';
+    }
+    $output .= '</div>';
+  }
+
+  if (module_exists('erp_purchase_order') or module_exists('erp_goods_receive')) {
+    $output .= '<div class="erp-outgoings">';
+    $output .= '<h2>'. t('Outgoings') .'</h2>';
+
+    // Outgoings
+    if (module_exists('erp_purchase_order')) {
+      $purchase_order_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_purchase_order}")));
+
+      $output .= '<div class="erp-purchase-order-details">';
+      $output .= 'Purchase Order Count: '. $purchase_order_count;
+      $output .= '</div>';
+    }
+
+    if (module_exists('erp_goods_receive')) {
+      $goods_receive_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_goods_receive}")));
+
+      $output .= '<div class="erp-goods-receive-details">';
+      $output .= 'Goods Receipt Count: '. $goods_receive_count;
+      $output .= '</div>';
+    }
+    $output .= '</div>';
+  }
+
+  if (module_exists('erp_item') or module_exists('erp_stock')) {
+    $output .= '<div class="erp-items-stock">';
+    $output .= '<h2>'. t('Items and Stock') .'</h2>';
+
+    // Items & Stock
+    if (module_exists('erp_item')) {
+      $item_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_item}")));
+
+      $output .= '<div class="erp-item-details">';
+      $output .= 'Item Count: '. $item_count;
+      $output .= '</div>';
+    }
+
+    if (module_exists('erp_stock')) {
+      $stock_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_stock}")));
+
+      $output .= '<div class="erp-goods-receive-details">';
+      $output .= 'Stock Count: '. $stock_count;
+      $output .= '</div>';
+    }
+    $output .= '</div>';
+  }
+
+  if (module_exists('erp_store')) {
+    $output .= '<div class="erp-other">';
+    $output .= '<h2>'. t('Other info') .'</h2>';
+
+    // Stores & Users
+    if (module_exists('erp_store')) {
+      $store_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {erp_store}")));
+      $user_count = array_pop(db_fetch_array(db_query("SELECT COUNT(*) FROM {users}")));
+
+      $output .= '<div class="erp-store-details">';
+      $output .= 'Store Count: '. $store_count;
+      $output .= '</div>';
+
+      $output .= '<div class="erp-user-details">';
+      $output .= 'User Count: '. $user_count;
+      $output .= '</div>';
+    }
+
+    $output .= '</div>';
+  }
+
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+// Provide links for book module
+function book_erp_customer_link($node) {
+  // Only bother if the user can create book pages
+  if (user_access('create book pages') && variable_get('erp_customer_use_book', FALSE)) {
+    if ($node->documentation) {
+      $mlid = db_result(db_query("SELECT mlid FROM {book} WHERE nid = %d", $node->documentation));
+    }
+
+    if ($mlid) {
+      $link_query = 'parent='. $mlid .'&customer='. $node->nid;
+    }
+    else {
+      $link_query = '&customer='. $node->nid;
+    }
+
+    $links['book_erp_customer_link'] = array(
+      'title' => t('create book page'),
+      'href' => 'node/add/book',
+      'attributes' => array('title' => t('Create a book page for this customer.')),
+      'query' => $link_query
+    );
+
+    return $links;
+  }
+  return array();
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+function erp_theme() {
+  return array(
+    'entries' => array(
+      'arguments' => array('form' => NULL),
+    ),
+    'newline' => array(
+      'arguments' => array('form' => NULL),
+    ),
+  );
+}
+
+/**
+ * Helper function to display invoice entries.
+ *
+ * @param unknown_type $form
+ * @return unknown
+ */
+function theme_entries($form) {
+  $rows = array();
+
+  $header = build_entries_header($form);
+
+  foreach (element_children($form['qty']) as $key) {
+    $row_data[] = drupal_render($form['item_desc'][$key]) . drupal_render($form['item'][$key]); //hidden
+
+    $row_data[] = drupal_render($form['qty'][$key]);
+
+    if (isset($form['completed_date'][$key])) {
+      $row_data[] = drupal_render($form['completed_date'][$key]);
+    }
+
+    if (isset($form['extra'][0])) {
+      $row_data[] = drupal_render($form['extra'][$key]);
+    }
+
+    // Invoices etc.
+    if (isset($form['serial'][0])) {
+      $row_data[] = drupal_render($form['serial'][$key]);
+    }
+
+    $row_data[] = drupal_render($form['price'][$key]);
+
+    if (isset($form['delete'][0])) {
+      $row_data[] = drupal_render($form['delete'][$key]);
+    }
+
+    // Tabledrag attaches to the first element, line becomes last element.
+    if (isset($form['line'][$key])) {
+      $row_data[] = drupal_render($form['line'][$key]);
+    }
+
+    $rows[] = array('data' => $row_data, 'class' => 'draggable');
+    $row_data = array();
+  }
+
+  if (in_array(t('Price'), $header)) {
+    $row_data = array_fill(0, count($header) - 1, array());
+    $row_data[count($header) - 3] = drupal_render($form['total']);
+    $row_data[count($header)] = array();
+    $rows[] = $row_data;
+  }
+  else {
+    $form['total']['#type'] = 'hidden';
+  }
+
+  $output .= '<div class="entries">'. theme('table', $header, $rows, array('id' => 'draggable-entries')) .'</div>';
+
+  $output .= drupal_render($form);
+
+  return $output;
+}
+
+/**
+ * Theme newline entries
+ */
+function theme_newline($form) {
+  $rows = array();
+
+  $header = build_entries_header($form, '#id');
+
+  if (isset($form['item_desc']['#id'])) {
+    $row_data[] = drupal_render($form['item_desc']);
+  }
+  if (isset($form['qty']['#id'])) {
+    $row_data[] = drupal_render($form['qty']);
+  }
+  if (isset($form['completed_date']['#id'])) {
+    $row_data[] = drupal_render($form['completed_date']);
+  }
+  if (isset($form['extra']['#id'])) {
+    $row_data[] = drupal_render($form['extra']);
+  }
+  if (isset($form['serial']['#id'])) {
+    $row_data[] = drupal_render($form['serial']);
+  }
+  if (isset($form['price']['#id'])) {
+    $row_data[] = drupal_render($form['price']);
+  }
+
+  $rows[] = $row_data;
+
+  $output .= '<div class="newline">'. theme('table', $header, $rows) .'</div>';
+
+  $output .= drupal_render($form);
+
+  return $output;
+}
+
+/**
+ * When printing, there is different info shown, and the structure is quite precise
+ * TODO: Make some sort of template system, or just change to use print.tpl.php
+ * based system?
+ */
+function erp_print_info($node) {
+  $payments = array();
+  $header = array();
+
+  $type = str_replace('erp_', '', $node->type);
+
+  $customer = node_load($node->customer_nid);
+  $store = node_load(erp_id_to_nid('store', $node->store_id));
+  $filename = module_invoke('erp_store', 'erp_store_logo', $store);
+
+  $output = '<div class="'. $type .'-info">';
+
+  $output .= '<div class="logo"><img src="'. $filename .'" alt="'. $store->company .'" /></div>';
+  $output .= '<div class="company-address">';
+  if ($store->company) {
+    $output .= $store->company .'<br />';
+  }
+  if ($store->address) {
+    $output .= $store->address .'<br />';
+  }
+  if ($store->suburb || $store->state || $store->postcode) {
+    $output .= $store->suburb .' '. $store->state .' '. $store->postcode .'<br />';
+  }
+  if ($store->phone) {
+    $output .= 'Phone '. $store->phone .'<br />';
+  }
+  if ($store->fax) {
+    $output .= 'Fax '. $store->fax;
+  }
+  $output .=  '</div>';
+
+  switch ($node->type) {
+    case 'erp_invoice':
+      // Invoice? paid?
+      if (!_erp_payment_get_balance($node) && $node->invoice_status == 'C') {
+        $output .= '<div class="paid">'. theme('image', drupal_get_path('module', 'erp') .'/images/erp_paid.png') .'</div>';
+      }
+
+      // Invoice details
+      $type_header = '<h1>Tax&nbsp;Invoice</h1>';
+      $type_id = 'Invoice no: '. $node->invoice_id .'</div>';
+      break;
+    case 'erp_quote':
+      // Quote closed?
+      if ($node->quote_status == 'C') {
+        $output .= '<div class="closed">'. theme('image', drupal_get_path('module', 'erp') .'/images/erp_closed.png') .'</div>';
+      }
+
+      $type_header = '<h1>Quote</h1>';
+      $type_id = 'Quote no: '. $node->quote_id .'</div>';
+      break;
+    case 'erp_purchase_order':
+      $type_header = '<h1>Purchase order</h1>';
+      $type_id = 'Purchase order no: '. $node->purchase_order_id .'</div>';
+      $supplier = node_load($node->supplier_nid);
+      break;
+    case 'erp_cash_sale':
+      $type_header = '<h1>Cash sale</h1>';
+      $type_id = 'Cash sale no: '. $node->cash_sale_id .'</div>';
+      break;
+  }
+
+  $output .= '<div class="details">'.
+    $type_header .'<br />'.
+    'ABN: '. $store->tax_id .'<br />'.
+    'Date: '. format_date($node->created, 'custom', 'd-m-Y') .'<br />'.
+    $type_id;
+
+  if ($node->type != 'erp_purchase_order' && $node->type != 'erp_goods_receive') {
+    // Store Details
+    $output .= '<div class="bill_to">';
+    $output .= '<strong>Bill to</strong><br />';
+    if ($customer->title) {
+      $output .= check_plain($customer->title) .'<br />';
+    }
+    if ($customer->postal_address) {
+      $output .= check_plain($customer->postal_address) .'<br />';
+    }
+    if ($customer->postal_suburb) {
+      $output .= check_plain($customer->postal_suburb) .'<br />';
+    }
+    if ($customer->postal_state) {
+      $output .= check_plain($customer->postal_state) .'&nbsp;&nbsp;&nbsp;';
+    }
+    if ($customer->postal_postcode) {
+      $output .= check_plain($customer->postal_postcode);
+    }
+    $output .= '</div>';
+
+    // Render terms etc.
+    $header = array('PO No', 'Terms', 'Due Date', 'Rep');
+    $rows = array();
+    $rows[] = array($node->po, erp_accounting_get_terms($node), $node->due_date, $node->rep);
+    $output .= '<div class="info_pane">'. theme('table', $header, $rows, array('class' => 'info_pane')) .'</div>';
+  }
+  else {
+    // Customer Details
+    $output .= '<div class="bill_to">';
+    $output .= '<strong>Order for</strong><br />';
+    if ($store->title) {
+      $output .= check_plain($store->title) .'<br />';
+    }
+    if ($store->address) {
+      $output .= check_plain($store->address) .'<br />';
+    }
+    if ($store->suburb) {
+      $output .= check_plain($store->suburb) .'<br />';
+    }
+    if ($store->state) {
+      $output .= check_plain($store->state) .'&nbsp;&nbsp;&nbsp;';
+    }
+    if ($store->postcode) {
+      $output .= check_plain($store->postcode);
+    }
+    $output .= '</div>';
+
+    // Render terms etc.
+    $header = array('Supplier', 'Phone', 'Email');
+    $rows = array();
+    $rows[] = array($supplier->title, $supplier->phone, $supplier->email);
+    $output .= '<div class="info_pane">'. theme('table', $header, $rows, array('class' => 'info_pane')) .'</div>';
+  }
+
+  $output .= '</div>';
+
+  list($header, $rows, $total_price) = erp_item_view_list($node);
+
+  if ($node->type == 'erp_invoice') {
+    if (erp_invoice_is_open($node)) {
+      if (module_exists('erp_payment')) {
+        if (_erp_payment_get_balance($node) != $total_price) {
+          $row = array_fill(0, count($header) - 2, array());
+          $row[] = array('data' => t("Outstanding: "), 'class' => 'outstanding-text');
+          $row[] = array('data' => erp_symbol() . erp_currency(_erp_payment_get_balance($node)), 'class' => 'outstanding-amount');
+          $rows[] = $row;
+        }
+      }
+    }
+  }
+
+  if ($node->type == 'erp_cash_sale') {
+    $row = array_fill(0, count($header) - 2, array());
+    $row[] = array('data' => t("Payment: "), 'class' => 'payment-text');
+    $row[] = array('data' => erp_payment_type_desc($node->payment_type) ." - ". erp_symbol() . erp_currency($node->payment_amount));
+    $rows[] = $row;
+  }
+
+  $output .= '<p>'. theme('table', $header, $rows) .'</p>';
+
+  if ($node->extra_notes) {
+    $output .= '<p><strong>'. t('Extra notes') .'</strong></p>';
+    $output .= '<p>'. $node->extra_notes .'</p>';
+  }
+
+  $output .= implode(module_invoke_all('erp_quote_special_offer', $node));
+
+  // Provide banking details on invoice
+  if ($node->type == 'erp_invoice') {
+    $output .= erp_invoice_outstanding($node);
+
+    // Bank Details and contact details
+    $output .= '<div class="bank-details">';
+    if ($store->company) {
+      $output .= 'Bank Account Details<br />'.
+        'Account Name: '. $store->company .'<br />'.
+        $store->bank_details .'<br />';
+    }
+    $output .= '</div>';
+  }
+
+  $output .= '<div class="contact-details">';
+  if ($store->phone) {
+      $output .= 'Phone: '. $store->phone .'<br />';
+  }
+  if ($store->fax) {
+    $output .= 'Fax: '. $store->fax .'<br />';
+  }
+  if ($store->email) {
+    $output .= 'Email: '. $store->email .'<br />';
+  }
+  if ($store->homepage) {
+    $output .= 'Web: '. $store->homepage;
+  }
+  $output .= '</div>';
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+/**
+ * On screen info includes everything
+ */
+function erp_screen_info($node) {
+  $payments = array();
+  $header = array();
+
+  $type = str_replace('erp_', '', $node->type);
+
+  $output = '<div class="'. $type .'-info">';
+
+  $output .= '<div class="'. $type .'-id">';
+  $output .= t('@type no: ', array('@type' => ucfirst(str_replace('_', ' ', $type)))) . $node->{$type .'_id'};
+  if ($node->type == 'erp_invoice') {
+    if ($node->po) {
+      $output .= ' - '. t('purchase order: ') . $node->po;
+    }
+  }
+  $output .= '</div>';
+
+  switch ($node->type) {
+    case 'erp_invoice':
+      $output .= '<div class="printed">';
+      $output .= t('Printed: ') . ($node->printed ? t('Yes') : t('No'));
+      $output .= '</div>';
+
+      // Invoice? paid?
+      if (!_erp_payment_get_balance($node) && $node->invoice_status == 'C') {
+        $output .= '<div class="paid">'. theme('image', drupal_get_path('module', 'erp') .'/images/erp_paid.png') .'</div>';
+      }
+      break;
+
+    case 'erp_quote':
+      // Quote closed?
+      if ($node->quote_status == 'C') {
+        $output .= '<div class="closed">'. theme('image', drupal_get_path('module', 'erp') .'/images/erp_closed.png') .'</div>';
+      }
+      break;
+  }
+
+  $output .= implode(module_invoke_all('erp_extra_info', $node));
+  $output .= implode(module_invoke_all($node->type .'_info', $node));
+
+  list($header, $rows, $total_price) = erp_item_view_list($node);
+
+  if ($node->type == 'erp_invoice') {
+    if (erp_invoice_is_open($node)) {
+      if (module_exists('erp_payment')) {
+        if (_erp_payment_get_balance($node) != $total_price) {
+          $row = array_fill(0, count($header) - 2, array());
+          $row[] = array('data' => t("Outstanding: "), 'class' => 'outstanding-text');
+          $row[] = array('data' => erp_symbol() . erp_currency(_erp_payment_get_balance($node)), 'class' => 'outstanding-amount');
+          $rows[] = $row;
+        }
+      }
+    }
+  }
+
+  $output .= '<p>'. theme('table', $header, $rows) .'</p>';
+
+  if ($node->extra_notes) {
+    $output .= '<p><strong>'. t('Extra notes') .'</strong></p>';
+    $output .= '<p>'. $node->extra_notes .'</p>';
+  }
+
+  if ($node->type == 'erp_invoice') {
+    $output .= erp_invoice_outstanding($node);
+  }
+
+  $output .= '</div>';
+
+  return $output;
+}
+
+/**
+ * Shrink text
+ *
+ * @param $text
+ * @param $shrink
+ * @return unknown_type
+ */
+function shrink($text, $shrink = 0) {
+  if (strlen($text) > $shrink + 2) {
+    return substr($text, 0, $shrink) .'..';
+  }
+  else {
+    return ($text ? $text : '');
+  }
+}
+
+/**
+ * Validate a job/timesheet/whatever's owner
+ *
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_owner_validate($name) {
+  // Try and retrieve the uid for the job owner based on the name
+  $owner = user_load(array('name' => $name));
+
+  return ($owner->uid ? $owner->uid : 0);
+}
+
+function erp_oid_validate($oid) {
+  // Try and retrieve the owner name from the uid
+  $owner = user_load(array('uid' => $oid));
+
+  return ($owner->name ? $owner->name : '');
+}
+
+/**
+ * Function used to both display and set the next invoice number,
+ * po number, etc. see invoice_settings, purchase_order_settings
+ * Defaults to collapsed as its not common
+ *
+ * @param unknown_type $type
+ * @param unknown_type $desc
+ * @return unknown
+ */
+function erp_set_next_id_form($table, $desc) {
+  // Doesn't work - $type_id = db_result(db_query("SELECT auto_increment FROM information_schema.tables WHERE table_name = '%s' and auto_increment is not null", $table));
+  // Not reliable (always returns current + 1), but better than the above (may return much smaller than current).
+  $type_id = db_result(db_query("SELECT max(%s) + 1 FROM {%s}", $desc .'_id', $table));
+
+  $form[$table .'_settings']['set_next'] =
+    array('#type' => 'fieldset',
+          '#title' => t('Next ') . $desc . t(' number'),
+          '#collapsible' => TRUE,
+          '#collapsed' => TRUE,
+          '#description' => t('You can set the number for the next created ') . $desc . t(' here.'));
+
+  $form[$table .'_settings']['set_next']['number'] =
+    array('#type' => 'textfield',
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#title' => t('Next ') . $desc . t(' number'),
+          '#default_value' => $type_id);
+
+  $form[$table .'_settings']['set_next']['table'] =
+    array('#type' => 'hidden',
+          '#value' => $table);
+
+  $form[$table .'_settings']['set_next']['button'] =
+    array('#type' => 'submit',
+          '#value' => t('Set number'));
+
+  $form['#submit'][] = 'erp_set_next_id_submit';
+
+  return $form;
+}
+
+/**
+ * Tiny submit handler for erp_set_next_id_form
+ *
+ * @param unknown_type $form
+ * @param unknown_type $form_state
+ */
+function erp_set_next_id_submit($form, &$form_state) {
+  if ($form_state['clicked_button']['#value'] == t('Set number')) {
+    db_query("ALTER TABLE {%s} AUTO_INCREMENT = %d", $form_state['values']['table'], $form_state['values']['number']);
+  }
+}
+
+/**
+ * This is is common function used by quote, invoice, cash_sale, purchase_order, and so is
+ * placed here. It does depend on "erp_item" being enabled however, meaning all those depend
+ * on erp_item as well.
+ *
+ */
+function erp_add_newline(&$node, &$form_state) {
+  if ($form_state['newline']) {
+    $newline = $form_state['newline'];
+    if (!isset($node->entries)) {
+      $node->entries = array();
+    }
+    $node->entries['qty'][] = ($newline['qty'] > 0 ? $newline['qty'] : 1);
+    $node->entries['item'][] = $newline['item'];
+    $node->entries['item_desc'][] = $newline['item_desc'];
+    $node->entries['extra'][] = $newline['extra'];
+    $node->entries['serial'][] = $newline['serial'];
+    $node->entries['completed_date'][] = $newline['completed_date'];
+    $node->entries['price'][] = $newline['price'];
+  }
+
+  $remove_delta = -1;
+  if (!empty($form_state['remove_delta'])) {
+    $remove_delta = $form_state['remove_delta'] - 1;
+    for ($i = 0; $i < count($node->entries['qty']); $i++) {
+      if ($i == $remove_delta) {
+        foreach ($node->entries as $value => $key) {
+          if (is_array($node->entries[$value])) {
+            erp_delete_array_key($node->entries[$value], $i);
+          }
+        }
+      }
+    }
+  }
+}
+
+function erp_newline_fields_validate($form_state) {
+  if (!is_array($form_state['values']['entries']['qty']) && !$form_state['values']['entries']['newline']) {
+    form_set_error('newline', t('You need to enter at least one "line" before submitting.'));
+  }
+  else {
+    for ($i = 0; $i < count($form_state['values']['entries']['qty']); $i++) {
+      if ($form_state['values']['entries']['item_desc'][$i]) {
+        $item_info = erp_item_desc_breakup($form_state['values']['entries']['item_desc'][$i]);
+        $supplier_id = $item_info[0];
+        $stock_code = $item_info[1];
+
+        $item_nid = erp_item_locate($supplier_id, $stock_code, FALSE);
+        if (!$item_nid) {
+          form_set_error('entries][item_desc]['. $i, t('Invalid stock code'));
+        }
+      }
+      // @todo: Check serial numbers are actually still available for sale
+    }
+  }
+}
+
+function erp_add_newline_submit($form, &$form_state) {
+  $form_state['remove_delta'] = 0;
+
+  // Set the form to rebuild and run submit handlers.
+  node_form_submit_build_node($form, $form_state);
+
+  // Make the changes we want to the form state.
+  if ($form_state['values']['addline']) {
+    list($supplier_id, $stock_code, $desc, $price) = erp_item_desc_breakup($form_state['values']['entries']['newline']['item_desc']);
+    $item_nid = erp_item_locate($supplier_id, $stock_code, FALSE);
+
+    if ($item_nid) {
+      $item_node = node_load($item_nid);
+
+      $new_entry['qty'] = $form_state['values']['entries']['newline']['qty'];
+      $new_entry['item'] = $item_nid;
+      $new_entry['item_desc'] = erp_item_desc_build($item_node);
+      $new_entry['extra'] = $form_state['values']['entries']['newline']['extra'];
+      if (variable_get('erp_invoice_serial', FALSE)) {
+        $new_entry['serial'] = $form_state['values']['entries']['newline']['serial'];
+      }
+      $new_entry['completed_date'] = $form_state['values']['entries']['newline']['completed_date'];
+      $new_entry['price'] = $form_state['values']['entries']['newline']['price'];
+      $form_state['newline'] = $new_entry;
+    }
+  }
+}
+
+function erp_remove_line_submit($form, &$form_state) {
+  // Set the form to rebuild and run submit handlers.
+  node_form_submit_build_node($form, $form_state);
+}
+
+function erp_line_js($delta = 0) {
+  $form = erp_ajax_form_handler($delta);
+
+  // Render the new output.
+  $erp_form = $form['entries'];
+
+  // Prevent duplicate wrappers.
+  unset($erp_form['#prefix'], $erp_form['#suffix']);
+
+  $output = theme('status_messages') . drupal_render($erp_form);
+
+  // Get the JS settings so we can merge them.
+  $javascript = drupal_add_js(NULL, NULL, 'header');
+  $settings = call_user_func_array('array_merge_recursive', $javascript['setting']);
+
+  // Final rendering callback.
+  drupal_json(array(
+    'status' => TRUE,
+    'data' => $output,
+    'settings' => array('ahah' => $settings['ahah']),
+  ));
+}
+
+/**
+ * This does various processes required for ajax form handling
+ *
+ */
+function erp_ajax_form_handler($delta = 0) {
+  // The form is generated in an include file which we need to include manually.
+  include_once 'modules/node/node.pages.inc';
+  $form_state = array('storage' => NULL, 'submitted' => FALSE);
+  $form_build_id = $_POST['form_build_id'];
+
+  // Get the form from the cache.
+  $form = form_get_cache($form_build_id, $form_state);
+  $args = $form['#parameters'];
+  $form_id = array_shift($args);
+
+  // We need to process the form, prepare for that by setting a few internals.
+  $form_state['post'] = $form['#post'] = $_POST;
+  $form['#programmed'] = $form['#redirect'] = FALSE;
+
+  // Set up our form state variable, needed for removing tracks.
+  $form_state['remove_delta'] = $delta;
+
+  if (!isset($_POST['op'])) {
+    // Disable #required and #element_validate validation.
+    _erp_ahah_helper_disable_validation($form);
+  }
+
+  // Build, validate and if possible, submit the form.
+  drupal_process_form($form_id, $form, $form_state);
+
+  // If validation fails, force form submission - this is my own "hack" for overcoming
+  // issues where all required fields need to be filled out before the 'add more' button
+  // can be clicked.  A better solution is being worked on in Drupal's issue queue.
+  if (form_get_errors()) {
+    form_execute_handlers('submit', $form, $form_state);
+  }
+
+  // This call recreates the form relying solely on the form_state that the
+  // drupal_process_form set up.
+  $form = drupal_rebuild_form($form_id, $form_state, $args, $form_build_id);
+
+  return $form;
+}
+
+function _erp_ahah_helper_disable_validation(&$form) {
+  foreach (element_children($form) as $child) {
+    $form[$child]['#validated'] = TRUE;
+    _erp_ahah_helper_disable_validation($form[$child]);
+  }
+}
+
+function erp_fix_ahah_action($node) {
+  global $base_path;
+  if ($node->nid) {
+    $action = $base_path .'node/'. $node->nid .'/edit';
+  }
+  else {
+    $action = $base_path .'node/add/'. str_replace('_', '-', $node->type);
+  }
+  return $action;
+}
+
+/**
+ * Given an array, remove one item, array_splice renumbers as well, which is nice.
+ *
+ * @param array $array
+ * @param int $key
+ */
+function erp_delete_array_key(&$array, $key) {
+  array_splice($array, $key, 1);
+}
+
+
+function build_entries_header($form, $item = 0) {
+  $header = array();
+
+  if (isset($form['item_desc'][$item])) {
+    $header[] = t('Stock Code');
+  }
+  if (isset($form['qty'][$item])) {
+    $header[] = t('Qty');
+  }
+  if (isset($form['completed_date'][$item])) {
+    $header[] = t('Date');
+  }
+  if (isset($form['extra'][$item])) {
+    $header[] = t('Extra Text');
+  }
+  if (isset($form['serial'][$item])) {
+    $header[] = t('Serial');
+  }
+  if (isset($form['price'][$item])) {
+    $header[] = t('Price');
+  }
+  if (isset($form['delete'][$item])) {
+    $header[] = t('Delete');
+  }
+  // Balance table cells to compensate for hidden line number.
+  while (count($header) < count(element_children($form['newline']))) {
+    $header[] = '';
+  }
+
+  return $header;
+}
+
+function erp_get_total($node) {
+  $total = 0;
+  if ($node->entries) {
+    for ($i=0; $i < count($node->entries['qty']); $i++) {
+      $total += $node->entries['qty'][$i] * $node->entries['price'][$i];
+    }
+  }
+  return $total;
+}
+
+/**
+ * If the node does not have a customer set, set the id & text customer now
+ *
+ * @param unknown_type $node
+ */
+function erp_set_customer(&$node) {
+  if (!is_object($node)) {
+    $node = new stdClass();
+  }
+
+  if (!$node->customer_nid) {
+    if ($_GET['customer']) {
+      $node->customer_nid = $_GET['customer'];
+    }
+    elseif ($_SESSION['curr_customer']) {
+      $node->customer_nid = $_SESSION['curr_customer'];
+    }
+  }
+
+  if ($node->customer_nid && !isset($node->customer)) {
+    $customer = node_load($node->customer_nid);
+    $node->customer = $customer->title;
+  }
+}
+
+/**
+ * Helper form validate function to remove form_state['storage'] during submit.
+ * If it's set, page redirection fails (i.e. doesn't happen).
+ */
+function erp_clear_storage($form, &$form_state) {
+  $form_state['storage'] = NULL;
+}
+
+function erp_transfer_data(&$node, &$newnode, $type) {
+	$orig_type = $node->type;
+	$orig_nid = $node->nid;
+
+  node_invoke($node, 'prepare_'. $type);
+
+  $node->comment = $newnode->comment;
+  $node->created = $newnode->created;
+  $node->date = $newnode->date;
+  $node->name = $newnode->name;
+  $node->type = $newnode->type;
+  $node->uid = $newnode->uid;
+  $node->refs = $node->nid;
+
+  // As this is a new node, we need to unset the current node id's
+  unset($node->nid);
+  unset($node->vid);
+  unset($node->title);
+  unset($node->comment_count);
+  unset($node->printed);
+
+  // Set default price type
+  $price_type = 'sell';
+
+  if ($node->type == 'erp_purchase_order') {
+    $price_type = 'buy';
+  }
+
+  if ($node->type == 'erp_invoice') {
+    $price_type = 'sell';
+  }
+
+	if ($orig_type == 'erp_job') {
+    if (module_exists('erp_job_billable')) {
+      $wid = workflow_get_workflow_for_type('erp_job');
+      $states = workflow_get_states($wid) + array(t('(creation)'));
+      $fuzz = 2; // Allow some seconds of fuzz to join the workflow table, which doesn't do us any favours trying to sync with it.
+      $result = db_query("SELECT jb.*, u.name FROM {erp_job_billable} jb LEFT JOIN {users} u ON jb.uid = u.uid WHERE jb.nid = %d ORDER BY jb.stamp ASC", $orig_nid);
+      $i = 0;
+
+      // Figure out item id for labour
+      $item_nid = variable_get('erp_job_invoice_item', '');
+      $item_node = node_load($item_nid);
+
+      while ($history = db_fetch_object($result)) {
+        if ($history->billable_time > 0) {
+          // Retrieve the comment from workflow table
+          // TODO Submit patch to workflow to return the hid to we can store that in erp_job_billable
+          $comment = db_result(db_query("SELECT comment FROM {workflow_node_history} WHERE nid = %d AND (stamp <= %d AND stamp >= %d)", $orig_nid, ($history->stamp + $fuzz), ($history->stamp - $fuzz)));
+          $node->entries['item'][$i] = $item_nid;
+          $node->entries['item_desc'][$i] = erp_item_desc_build($item_node);
+          $node->entries['qty'][$i] = $history->billable_time;
+          $node->entries['completed_date'][$i] = date('d-m-Y', $history->stamp);
+          $node->entries['extra'][$i] = check_plain($history->name) .' - '. check_plain($comment);
+          $node->entries['price'][$i] = erp_item_price($item_nid, $price_type);
+          $i++;
+        }
+      }
+
+      // Now, close the job if we have a setting
+      $closed_state = variable_get('erp_job_workflow_complete', FALSE);
+      if ($closed_state) {
+        $orig_node = node_load($orig_nid);
+        workflow_transition($orig_node, $closed_state);
+      }
+    }
+	}
+	else {
+	  for ($i = 0; $i < count($node->entries['item']); $i++) {
+	    // If no price is set, default to the 'sell' price.
+	    if (!isset($node->entries['price'][$i])) {
+	      $node->entries['price'][$i] = erp_item_price($node->entries['item'][$i], $price_type);
+	    }
+	  }
+	}
+}
+
+/**
+ * Nag the user into doing setup.
+ *
+ * @param unknown_type $node
+ * @param unknown_type $op
+ * @param unknown_type $teaser
+ * @param unknown_type $page
+ */
+function erp_user($op, &$edit, &$user, $category = NULL) {
+	switch ($op) {
+		case 'login':
+			drupal_set_message(erp_initial_setup_check());
+	}
+}
+
+function erp_initial_setup_check() {
+  $erp_initial_setup_complete = variable_get('erp_initial_setup_complete', FALSE);
+  if (!$erp_initial_setup_complete) {
+    return t('Your ERP setup is not yet complete, please visit !url to finalise settings', array('!url' => l(t('ERP Initial setup'), 'admin/erp/initialsetup')));
+  }
+}
+
+/**
+ * This function is to make things work better with auto deployment tools like aegir
+ * that dont allow any input at profile runthrough time.
+ *
+ * It just incorporates all the admin setting forms into one place.
+ *
+ * TODO: Should be moved from this module, not needed for every page.
+ *
+ */
+function erp_initial_setup() {
+	$form = array();
+
+  $erp_initial_setup_complete = variable_get('erp_initial_setup_complete', FALSE);
+  if (!$erp_initial_setup_complete) {
+    $form['help'] = array(
+      '#type' => 'markup',
+      '#value' => t('<p>ERP is now setup, but there are some tasks that should be reviewed before you start using ERP.</p><p>The tasks are listed below, with links to various things that should be personalised for your business.</p><p>Please work through the list below, and mark each item off as you complete it.</p>'),
+    );
+
+    $form['help']['#prefix'] = '<div class="error">';
+    $form['help']['#suffix'] = '</div><p>&nbsp;</p>';
+  }
+  else {
+    $form['help'] = array(
+      '#type' => 'markup',
+      '#value' => t('<p>Congratulations!</p><p>ERP setup is now complete.</p>'),
+    );
+    $form['help']['#suffix'] = '<p>&nbsp;</p>';
+  }
+
+	drupal_set_title(t('ERP Setup tasks'));
+  $form['setup_tasks'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Setup tasks'),
+    '#collapsible' => TRUE,
+    '#collapsed' => $erp_initial_setup_complete
+  );
+
+  $store = node_load(variable_get('erp_default_store', FALSE));
+  $form['setup_tasks']['erp_setup_store_complete'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('I have edited the store details.'),
+    '#default_value' => variable_get('erp_setup_store_complete', FALSE),
+    '#description' => t('!url - Change the store name and address details to match your business.', array('!url' => l($store->title, 'node/'. $store->nid .'/edit', array('query' => 'destination='. $_GET['q'])))),
+  );
+
+  $form['setup_tasks']['erp_setup_add_users'] = array(
+   '#type' => 'checkbox',
+    '#title' => t('I have added users for my staff.'),
+    '#default_value' => variable_get('erp_setup_add_users', FALSE),
+    '#description' => t('!url - Add new users for your staff. Remember to select the "Staff" role for each that you add.', array('!url' => l(t('Drupal user list'), 'admin/user/user/list', array('query' => 'destination='. $_GET['q'])))),
+  );
+
+  $form['setup_tasks']['erp_setup_default_franchisee'] = array(
+   '#type' => 'checkbox',
+    '#title' => t('I have verified the default franchisee.'),
+    '#default_value' => variable_get('erp_setup_default_franchisee', FALSE),
+    '#description' => t('!url - Review the franchisee settings.', array('!url' => l(t('ERP franchisee settings'), 'admin/erp/franchise', array('query' => 'destination='. $_GET['q'])))),
+  );
+
+  $form['setup_tasks']['erp_setup_customer_defaults'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('I have verified the customer defaults.'),
+    '#default_value' => variable_get('erp_setup_customer_defaults', FALSE),
+    '#description' => t('!url - Review the customer settings.', array('!url' => l(t('ERP customer settings'), 'admin/erp/customer', array('query' => 'destination='. $_GET['q'])))),
+  );
+
+  $form['setup_tasks']['erp_setup_invoice_defaults'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('I have verified the invoice defaults.'),
+    '#default_value' => variable_get('erp_setup_invoice_defaults', FALSE),
+    '#description' => t('!url - Review the invoice settings.', array('!url' => l(t('ERP invoice settings'), 'admin/erp/invoice', array('query' => 'destination='. $_GET['q'])))),
+  );
+
+  $form['setup_tasks']['erp_setup_gmap_defaults'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('I have verified the GMap (Google Map) defaults.'),
+    '#default_value' => variable_get('erp_setup_gmap_defaults', FALSE),
+    '#description' => t('!url - Review the invoice settings.', array('!url' => l(t('GMap settings'), 'admin/settings/gmap', array('query' => 'destination='. $_GET['q'])))),
+  );
+
+
+
+  $form['#submit'][] = 'erp_initial_setup_update';
+
+  return system_settings_form($form);
+}
+
+function erp_initial_setup_update($form, $form_state) {
+	$complete = TRUE;
+	foreach ($form_state['values'] as $var => $value) {
+		if (substr($var, 0, 9) == 'erp_setup') {
+			if ($value != 1) {
+			  $complete = FALSE;
+			  break;
+			}
+		}
+	}
+	if ($complete) {
+		variable_set('erp_initial_setup_complete', TRUE);
+	}
+	else {
+    variable_set('erp_initial_setup_complete', FALSE);
+	}
+}
+
+function erp_get_timezone() {
+  global $user;
+  if (variable_get('configurable_timezones', 1) && $user->uid && strlen($user->timezone)) {
+    $timezone = $user->timezone;
+  }
+  else {
+    $timezone = variable_get('date_default_timezone', 0);
+  }
+  return $timezone;
+}
+
+/**
+ * Provides sorting for line items, E.g. erp_invoices, erp_quotes.
+ */
+function erp_sort_entries(&$entries) {
+  $new_entries = array();
+  $index = 0;
+  if (count($entries['line'])) {
+    $order = array_flip($entries['line']);
+    ksort($order);
+    foreach($entries as $field => $rows) {
+      foreach ($order as $weight => $line) {
+        $new_entries[$field][$index] = $rows[$line];
+        $index++;
+      }
+      $index = 0;
+    }
+    $entries = $new_entries;
+  }
+}

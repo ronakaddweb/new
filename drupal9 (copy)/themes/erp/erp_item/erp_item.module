@@ -1,0 +1,1067 @@
+<?php
+// $Id: erp_item.module,v 1.24.2.34 2011/01/14 00:55:04 simon Exp $
+
+/**
+ * @file
+ * item module.
+ *
+ */
+
+/**
+ * Provide help links
+ */
+function erp_item_help($path, $arg) {
+  switch ($path) {
+  case 'admin/modules#description':
+    return t('ERP item module.');
+    break;
+  case 'node/add#erp_item':
+    return t('ERP item.');
+    break;
+  }
+  return NULL;
+}
+
+/**
+ * Implementation of hook_name().
+ *
+ * Provide the node name hook.
+ */
+function erp_item_node_name($node) {
+  return t('erp item');
+}
+
+/**
+ * Implementation of item_node_info
+ *
+ * @return array of information
+ */
+function erp_item_node_info() {
+  return array(
+    'erp_item' => array(
+      'name' => t('erp item'),
+      'module' => 'erp_item',
+      'description' => t('ERP Item module'),
+      'title_label' => t('Item'),
+      'has_body' => TRUE
+    )
+  );
+}
+
+/**
+ * Determine item pricing access level
+ *
+ * @param unknown_type $op
+ * @param unknown_type $node
+ * @return unknown
+ */
+function erp_item_access($op, $node, $account) {
+  switch ($op) {
+    case 'create':
+      return user_access('item edit', $account);
+      break;
+
+    case 'update':
+    case 'delete':
+      return user_access('item edit', $account);
+      break;
+
+    case 'view':
+      return user_access('item view', $account);
+      break;
+  }
+
+  // Default to no access
+  return FALSE;
+}
+
+/**
+ * Return permissions list
+ */
+function erp_item_perm() {
+  return array('item edit', 'item list', 'item import', 'item wholesale', 'item cart', 'admin item', 'item price list', 'item view');
+}
+
+/**
+ * Provide a link to item pricing
+ *
+ * @param unknown_type $type
+ * @param unknown_type $node
+ * @param unknown_type $main
+ * @return unknown
+ */
+function erp_item_link($type, $node = 0, $main) {
+  global $user;
+
+  $links = array();
+
+  if ($type == 'node' && $node->type == 'erp_item') {
+    if (erp_item_access('update', $node, $user)) {
+      $links['erp_item_link'] =
+        array('title' => t('edit this item'),
+              'href' => 'node/'. $node->nid .'/edit');
+    }
+
+    if (module_exists('erp_stock')) {
+      if (user_access('stock list')) {
+        $links['erp_stock_sales'] =
+          array('title' => t('view sales'),
+                'href' => 'erp/stock/sales/'. $node->nid);
+      }
+    }
+
+    $links = array_merge($links, module_invoke_all('erp_item_link', $node));
+  }
+
+  return $links;
+}
+
+/**
+ * Setup menus
+ */
+function erp_item_menu() {
+  $items['admin/erp/item'] = array(
+    'title' => 'Item',
+    'description' => 'Configure erp item settings',
+    'access arguments' => array('admin item'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('erp_item_admin_settings')
+  );
+
+  $items['erp/item/customer'] = array(
+    'title' => 'Items purchased by customer',
+    'page callback' => 'erp_item_customer',
+    'access arguments' => array('item list'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/item/code'] = array(
+    'page callback' => 'erp_item_code',
+    'access arguments' => array('item list'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/item/check/%node'] = array(
+    'page callback' => 'erp_item_check',
+    'page arguments' => array(3),
+    'access arguments' => array('item list'),
+    'type' => MENU_CALLBACK
+  );
+
+  $items['erp/item/autocomplete/%/%'] = array(
+    'page callback' => 'erp_item_autocomplete',
+    'page arguments' => array(3, 4),
+    'access arguments' => array('item list'),
+    'type' => MENU_CALLBACK
+  );
+
+  return $items;
+}
+
+function erp_item_admin_settings() {
+  $form['erp_item_popup'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Popup the "add to cart" form in a window?'),
+          '#default_value' => variable_get('erp_item_popup', ''));
+
+  $form['erp_item_default_user_store'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('When creating an invoice/cash sale etc, default to stock from the users default store?'),
+    '#default_value' => variable_get('erp_item_default_user_store', FALSE),
+    '#description' => t('This can still be overridden by putting another store in the autocomplete field like "otherstore@". Most useful when serial number tracking is enabled.'),
+  );
+
+  // Get vocabularies
+  $vocabs = taxonomy_get_vocabularies('erp_item');
+  foreach ($vocabs as $vid => $vocab) {
+    $vocab_options[$vid] = $vocab->name;
+  }
+
+  $form['erp_item_manufacturer_tid'] = array(
+    '#type' => 'select',
+    '#title' => t('Manufacturer Vocabulary'),
+    '#default_value' => variable_get('erp_item_manufacturer_tid', ''),
+    '#options' => $vocab_options,
+    '#multiple' => FALSE,
+    '#description' => t('When importing items, the manufacturer will automatically be looked up/added into this vocabulary.'),
+  );
+
+  $form['erp_item_category_tid'] = array(
+    '#type' => 'select',
+    '#title' => t('Category Vocabulary'),
+    '#default_value' => variable_get('erp_item_category_tid', ''),
+    '#options' => $vocab_options,
+    '#multiple' => FALSE,
+    '#description' => t('When importing items, the manufacturer will automatically be looked up/added into this vocabulary.'),
+  );
+
+  $form['erp_item_markup'] =
+    array('#type' => 'textfield',
+          '#title' => t('Markup multiplier'),
+          '#default_value' => variable_get('erp_item_markup', '1.2'),
+          '#description' => t('Imported items with no RRP are by default set to the buy price multiplied by this amount. eg 1.5 for 50% markup, 1.2 for 20% markup, 2 for 100% markup. NOTE: The erp pricing module may override any settings here if enabled.'));
+
+  $form['erp_item_autocomplete_count'] =
+    array('#type' => 'textfield',
+          '#title' => t('Number of items to show when autocompleting'),
+          '#default_value' => variable_get('erp_item_autocomplete_count', 10));
+
+  return system_settings_form($form);
+}
+
+function erp_item_form(&$node) {
+  $form['title'] =
+    array('#type' => 'textfield',
+          '#title' => t('Item Description'),
+          '#size' => 60,
+          '#maxlength' => 128,
+          '#default_value' => $node->title,
+          '#required' => TRUE);
+
+  $form['item_details'] =
+    array('#prefix' => '<div class="item-details">',
+          '#type' => 'fieldset',
+          '#title' => 'item details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  $form['item_details']['code'] =
+    array('#type' => 'textfield',
+          '#title' => t('Code'),
+          '#size' => 20,
+          '#maxlength' => 128,
+          '#default_value' => $node->code);
+
+  $form['item_details']['barcode'] =
+    array('#type' => 'textfield',
+          '#title' => t('Barcode'),
+          '#size' => 40,
+          '#maxlength' => 40,
+          '#default_value' => $node->barcode);
+
+  $form['item_details']['item_type'] =
+    array('#prefix' => '<div class="item-type">',
+          '#type' => 'radios',
+          '#title' => t('Type'),
+          '#options' => erp_item_types(),
+          '#default_value' => $node->item_type,
+          '#suffix' => '</div><br />');
+
+  $form['item_details']['full_desc'] =
+  array('#type' => 'textarea',
+        '#title' => t('Full Item Description'),
+        '#default_value' => $node->full_desc);
+
+  if (module_exists('erp_supplier')) {
+    $form['supplier_details'] =
+      array('#prefix' => '<div class="item-supplier">',
+            '#type' => 'fieldset',
+            '#title' => 'supplier information',
+            '#collapsible' => TRUE,
+            '#tree' => FALSE,
+            '#suffix' => '</div>');
+
+    $form['supplier_details']['supplier'] =
+      array('#type' => 'textfield',
+            '#title' => t('Supplier'),
+            '#size' => 20,
+            '#maxlength' => 128,
+            '#autocomplete_path' => 'erp/supplier/autocomplete',
+            '#default_value' => $node->supplier);
+
+    $form['supplier_details']['supp_code'] =
+      array('#type' => 'textfield',
+            '#title' => t('Suppliers Code for this part'),
+            '#size' => 20,
+            '#maxlength' => 128,
+            '#default_value' => $node->supp_code);
+
+    $form['supplier_details']['buy_price'] =
+      array('#type' => 'textfield',
+            '#title' => t('Buy Price(ex)'),
+            '#size' => 10,
+            '#maxlength' => 10,
+            '#default_value' => erp_currency($node->buy_price));
+  }
+
+  $form['sale_details'] =
+    array('#prefix' => '<div class="sale-details">',
+          '#type' => 'fieldset',
+          '#title' => 'sale details',
+          '#collapsible' => TRUE,
+          '#tree' => FALSE,
+          '#suffix' => '</div>');
+
+  $rrp_price = erp_currency(array_pop(module_invoke_all('erp_tax_inc_amount', $node->rrp_price)));
+
+  $form['sale_details']['rrp_price'] =
+    array('#type' => 'textfield',
+          '#title' => t('RRP Price'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $rrp_price);
+
+  $sell_price = erp_currency(array_pop(module_invoke_all('erp_tax_inc_amount', $node->sell_price)));
+
+  $form['sale_details']['sell_price'] =
+    array('#type' => 'textfield',
+          '#title' => t('Sell Price'),
+          '#size' => 10,
+          '#maxlength' => 10,
+          '#default_value' => $sell_price);
+
+  $form['sale_details']['active'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Active'),
+          '#default_value' => $node->active);
+
+  $form['sale_details']['item_locked'] =
+    array('#type' => 'checkbox',
+          '#title' => t('Locked from Updates'),
+          '#default_value' => $node->item_locked,
+          '#description' => t('By default, the import process updates all fields. Checking this box will restrict the import process to updating the prices only'));
+
+  return $form;
+}
+
+function erp_item_check($node) {
+  erp_stock_check_update_in_stock($node);
+  drupal_goto();
+}
+
+function erp_item_types() {
+  return array(t('stock item') => t('stock item'),
+               t('service') => t('service'));
+}
+
+function erp_item_validate($node, $form) {
+  $node = (object)$node;
+
+  if (module_exists('erp_supplier')) {
+    if ($node->buy_price != ereg_replace("[^$0-9.]", "", $node->buy_price)) {
+      form_set_error('buy_price', t('Illegal value in price'));
+    }
+  }
+
+  if ($node->rrp_price != ereg_replace("[^$0-9.]", "", $node->rrp_price)) {
+    form_set_error('rrp_price', t('Illegal value in price'));
+  }
+
+  if ($node->sell_price != ereg_replace("[^$0-9.]", "", $node->sell_price)) {
+    form_set_error('sell_price', t('Illegal value in price'));
+  }
+
+  // Duplicate detection
+  $supplier_node = erp_supplier_name_to_node($node->supplier);
+
+  if ($node->nid) {
+    $num_nodes = db_result(db_query("SELECT count(n.nid) FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' AND supplier_nid = %d AND n.nid <> %d", $node->code, $supplier_node->nid, $node->nid));
+  }
+  else {
+    $num_nodes = db_result(db_query("SELECT count(n.nid) FROM {node} n INNER JOIN {erp_item} s ON n.nid = s.nid WHERE active = 1 AND s.code = '%s' AND supplier_nid = %d", $node->code, $supplier_node->nid));
+  }
+  if ($num_nodes > 0) {
+    form_set_error('code', t('There can not be two items with the same code for the same supplier'));
+  }
+}
+
+function erp_item_insert($node) {
+  if (module_exists('erp_supplier')) {
+    if ($node->supplier) {
+      $supplier_node = erp_supplier_name_to_node($node->supplier);
+      $node->supplier_nid = $supplier_node->nid;
+    }
+    elseif (!$node->supplier_nid) {
+      watchdog('erp_item', 'Cannot save without supplier', NULL, WATCHDOG_DEBUG);
+    }
+  }
+
+  if (!$node->tax_ex) {
+    // Convert prices back to ex tax
+    $node->buy_price = round(array_pop(module_invoke_all('erp_tax_ex_amount', $node->buy_price)), 2);
+    $node->rrp_price = round(array_pop(module_invoke_all('erp_tax_ex_amount', $node->rrp_price)), 2);
+    $node->sell_price = round(array_pop(module_invoke_all('erp_tax_ex_amount', $node->sell_price)), 2);
+  }
+
+  drupal_write_record('erp_item', $node);
+}
+
+/**
+ * Implementation of hook_update().
+ *
+ * There are some tweaks in this to optimise for the erp_item_import function
+ *
+ * @param unknown_type $node
+ */
+function erp_item_update($node) {
+  if (module_exists('erp_supplier')) {
+    if ($node->supplier) {
+      $supplier_node = erp_supplier_name_to_node($node->supplier);
+      $node->supplier_nid = $supplier_node->nid;
+    }
+    elseif (!$node->supplier_nid) {
+      watchdog('erp_item', 'Cannot save without supplier', NULL, WATCHDOG_DEBUG);
+    }
+  }
+
+  if (!$node->tax_ex) {
+    // Convert prices back to ex tax
+    $node->buy_price = round(array_pop(module_invoke_all('erp_tax_ex_amount', $node->buy_price)), 2);
+    $node->rrp_price = round(array_pop(module_invoke_all('erp_tax_ex_amount', $node->rrp_price)), 2);
+    $node->sell_price = round(array_pop(module_invoke_all('erp_tax_ex_amount', $node->sell_price)), 2);
+  }
+
+  drupal_write_record('erp_item', $node, array('nid'));
+}
+
+function erp_item_delete($node) {
+  db_query('DELETE FROM {erp_item} WHERE nid = %d', $node->nid);
+}
+
+function erp_item_load($node) {
+  $additions = db_fetch_object(db_query('SELECT * from {erp_item} ei WHERE ei.nid = %d', $node->nid));
+  $additions->rrp_price = round($additions->rrp_price, 2);
+  $additions->buy_price = round($additions->buy_price, 2);
+  $additions->sell_price = round($additions->sell_price, 2);
+
+  return $additions;
+}
+
+function erp_item_view(&$node, $teaser = FALSE, $page = FALSE) {
+  $node = node_prepare($node, $teaser);
+
+  $node->content['body'] =
+    array('#value' => theme('erp_item_info', $node),
+          '#weight' => 1);
+
+  return $node;
+}
+
+function erp_item_theme() {
+  return array(
+    'erp_item_info' => array(
+      'arguments' => array('node' => NULL)
+    )
+  );
+}
+
+function theme_erp_item_info($node) {
+  $output = '<div class="item-info">';
+
+  $output .= '<div class="code">';
+  $output .= t('Code: ') . $node->code;
+  $output .= '</div>';
+  $output .= '<div class="barcode">';
+  $output .= t('Barcode: ') . $node->barcode;
+  $output .= '</div>';
+
+  $output .= '<div class="description">';
+  $output .= t('Description: ') . nl2br($node->full_desc);
+  $output .= '</div>';
+
+  $output .= implode(module_invoke_all('erp_extra_info', $node));
+
+  if (module_exists('erp_supplier')) {
+    // Michael Linked Supplier codes to main supplier websites using helper function erp_item_get_supp_url()
+    $output .= '<div class="supp-code">';
+    $lookup_url = erp_item_get_supp_url($node->supplier_nid, $node->supp_code);
+    if ($lookup_url) {
+      $output .= t('Supplier Code: ') . l($node->supp_code, $lookup_url);
+    }
+    else {
+      $output .= t('Supplier Code: ') . $node->suppplier_id;
+    }
+    $output .= '</div>';
+
+    if (user_access('item wholesale')) {
+      $output .= '<div class="buy-price">';
+      $output .= t('Buy Price: ') . erp_symbol() . erp_currency($node->buy_price);
+      $output .= '</div>';
+    }
+  }
+
+  $rrp_price = array_pop(module_invoke_all('erp_tax_inc_amount', $node->rrp_price));
+
+  $output .= '<div class="rrp-price">';
+  $output .= t('RRP Price: ') . erp_symbol() . erp_currency($rrp_price);
+  $output .= '</div>';
+
+  $sell_price = array_pop(module_invoke_all('erp_tax_inc_amount', $node->sell_price));
+
+  $output .= '<div class="our-price">';
+  $output .= t('Sell Price: ') . erp_symbol() . erp_currency($sell_price);
+  $output .= '</div>';
+
+  $output .= '<div class="active">';
+  if ($node->active) {
+    $output .= t('Active');
+  }
+  else {
+    $output .= t('Inactive');
+  }
+
+  if (module_exists('erp_stock')) {
+    $output .= '<div class="qty">';
+    $output .= l(t('Qty on hand: !qty', array('!qty' => erp_stock_avail($node->nid))), 
+                 'erp/item/check/'. $node->nid, 
+                 array(
+                   'attributes' => 
+                   array(
+                     'title' => t('Click to refresh'),
+                   ),
+                   'query' => 'destination=node/'. $node->nid,
+                 )
+    );
+    $output .= '</div>';
+
+    $output .= '<div class="erp-stock-serial">';
+    $output .= erp_stock_list_item($node->nid);
+    $output .= '</div>';
+  }
+
+  $output .= '</div>';
+
+  // Check for alternative products
+  // TODO: use module_invoke_all?
+  $code = $node->supp_code;
+  $title = explode(' ', trim($node->title));
+  $nids[$node->nid] = $node->nid;
+
+  while (strlen($node->supp_code) > 2) {
+    $title_text = implode(' ', $title);
+    $exclude = implode(",", $nids);
+
+    $result = db_query("
+      SELECT e.nid, n.title
+      FROM {erp_item} e
+      LEFT JOIN {node} n ON n.nid = e.nid
+      WHERE
+      e.nid NOT IN(%s) AND
+      e.active = 1 AND
+      (n.title LIKE '%%%s%%')
+      LIMIT 5", $exclude, $title_text
+    );
+
+    $found = FALSE;
+    while ($row = db_fetch_array($result)) {
+      $alternate = node_load($row['nid']);
+      $found = TRUE;
+
+      $alternate_rrp_price = array_pop(module_invoke_all('erp_tax_inc_amount', $alternate->rrp_price));
+      $alternate_sell_price = array_pop(module_invoke_all('erp_tax_inc_amount', $alternate->sell_price));
+
+      $alternatives[] = array(
+        l($alternate->supplier, 'node/'. $alternate->supplier_nid),
+        l(shrink($row['title'], 50), 'node/'. $row['nid']),
+        erp_symbol() . erp_currency($alternate->buy_price),
+        erp_symbol() . erp_currency($alternate_rrp_price),
+        erp_symbol() . erp_currency($alternate_sell_price)
+      );
+      $nids[$row['nid']] = $row['nid'];
+    }
+
+    if (count($alternatives) > 5) {
+      break;
+    }
+
+    $code = substr($code, 1);
+    $code = substr($code, 0, strlen($code) - 1);
+
+    if ($odd > 2) {
+      array_shift($title);
+      $odd = 0;
+    }
+    else {
+      array_pop($title);
+      $odd = 2;
+    }
+  }
+
+  if ($found) {
+    $output .= '<div class="erp_alternatives">';
+    $output .= '<p><strong>Possible alternatives</strong><br />';
+    $output .= theme('table', array(t('Supplier'), t('Item'), t('Buy price'), t('RRP price'), t('Sell price')), $alternatives);
+    $output .= '</p></div>';
+  }
+
+  return $output;
+}
+
+// Helper function to translate supplier ID to URL
+function erp_item_get_supp_url($supplier_nid, $supp_code = "") {
+  if ($supplier_nid) {
+    $node = node_load($supplier_nid);
+
+    return str_replace('%s', $supp_code, $node->lookup_url);
+  }
+
+  return FALSE;
+}
+
+function erp_item_build_taxonomy_sql($tids, $operator, &$join, &$where) {
+  $depth = 0;
+
+  foreach ($tids as $index => $tid) {
+    if ($tid != 0) {
+      $term = taxonomy_get_term($tid);
+      $tree = taxonomy_get_tree($term->vid, $tid, -1, $depth);
+      $descendant_tids[] = array_merge(array($tid), array_map('_taxonomy_get_tid_from_term', $tree));
+    }
+  }
+
+  if ($descendant_tids) {
+    if ($operator == 'or') {
+      $str_tids = implode(',', call_user_func_array('array_merge', $descendant_tids));
+      $join[] = 'INNER JOIN {term_node} tn ON n.nid = tn.nid';
+      $where[] = 'WHERE tn.tid IN ('. $str_tids .')';
+    }
+    else {
+      $joins = '';
+      $wheres = '';
+      foreach ($descendant_tids as $index => $tids) {
+        $join[] = 'INNER JOIN {term_node} tn'. $index .' ON n.nid = tn'. $index .'.nid';
+        $where[] = 'tn'. $index .'.tid IN ('. implode(',', $tids) .')';
+      }
+    }
+  }
+
+  return;
+}
+
+/**
+ * Autocomplete function for item
+ */
+function erp_item_code($string) {
+  $matches = array();
+  $sql = "SELECT n.title FROM {node} n LEFT JOIN {erp_item} i ON n.nid = i.nid WHERE code LIKE '%%%s%%' OR title LIKE '%%%s%%' AND i.active = 1";
+  $result = db_query_range($sql, $string, $string, 0, 25);
+  while ($item = db_fetch_object($result)) {
+    $matches[$item->code] = check_plain($item->code);
+  }
+  print drupal_to_js($matches);
+  exit();
+}
+
+/**
+ * Locate item
+ *
+ * @param unknown_type $supplier
+ * @param unknown_type $code
+ * @return unknown
+ */
+function erp_item_locate($supplier, $code, $use_supp_code = TRUE) {
+  $supplier_nid = erp_id_to_nid('supplier', $supplier);
+  if (!$supplier_nid) {
+    return NULL;
+  }
+
+  if ($use_supp_code) {
+    $sql = "SELECT n.nid FROM {node} n LEFT JOIN {erp_item} i ON i.nid = n.nid WHERE i.supp_code = '%s' and i.supplier_nid = %d";
+  }
+  else {
+    $sql = "SELECT n.nid FROM {node} n LEFT JOIN {erp_item} i ON i.nid = n.nid WHERE i.code = '%s' and i.supplier_nid = %d";
+  }
+
+  $nid = db_result(db_query($sql, $code, $supplier_nid));
+  return $nid;
+}
+
+/**
+ * Lookup the price of an item
+ */
+function erp_item_price_from_string($string) {
+  list($supplier, $code, $desc, $price) = erp_item_desc_breakup($string);
+
+  $sql = "SELECT nid FROM {erp_item} i WHERE code = '%s'";
+
+  $nid = db_result(db_query($sql, $code));
+
+  $amount = erp_item_price($nid, 'rrp');
+
+  return ($amount != 0 ? $amount : '');
+}
+
+/**
+ *
+ */
+function erp_item_price($nid, $type = 'rrp') {
+  if ($type != 'rrp' and $type != 'buy' and $type != 'sell') {
+    return FALSE;
+  }
+
+  $sql = 'SELECT * FROM {erp_item} WHERE nid = %d';
+  $result = db_query($sql, $nid);
+
+  $row = db_fetch_array($result);
+
+  if ($row) {
+    // Here we hook into the pricing module, where we can discount for certain customers
+    if (module_exists('erp_pricing') && $type == 'sell') {
+    	if ($buy_price > 0) {
+        // Assume working with currently selected customer and apply markup
+        $customer = $_SESSION['curr_customer'];
+        $amount = $row['buy_price'] * erp_pricing_get_entry($customer, 'markup');
+    	}
+    	else {
+    		$amount = $row['sell_price'];
+    	}
+
+      // apply tax
+      $amount = erp_tax_erp_tax_inc_amount($amount);
+      return $amount;
+    }
+    else {
+      return erp_tax_erp_tax_inc_amount($row[$type .'_price']);
+    }
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function erp_item_buy_price($nid) {
+  return erp_currency(erp_item_price($nid, 'buy'));
+}
+
+function erp_item_sell_price($nid) {
+  return erp_currency(erp_item_price($nid, 'sell'));
+}
+
+/**
+ * Item autocomplete function
+ * This function is a beast, and really should be re-written. Anybody bored and looking for something to do?
+ *
+ * @param unknown_type $string
+ */
+function erp_item_autocomplete($type, $string) {
+  $matches = array();
+
+  $use_default_store = variable_get('erp_item_default_user_store', FALSE);
+
+  // Protect against attacks
+  $string = check_plain($string);
+
+  if (module_exists('erp_supplier')) {
+    // If the user is switched on enough to put the supplier code in, let them.
+    if (strstr($string, ':')) {
+      list($supplier, $string) = explode(':', $string);
+      if (is_numeric($supplier)) {
+        $supplier_nid = erp_id_to_nid('supplier', $supplier);
+      }
+      else {
+        $supplier = erp_supplier_name_to_node($supplier);
+        $supplier_nid = $supplier->nid;
+      }
+    }
+  }
+
+  if (module_exists('erp_store')) {
+    // If the user is switched on enough to put the store in, let them.
+    $pos = strpos($string, '@');
+    if ($pos !== FALSE) {
+      if ($pos == 0) {
+        // When @ with no store, show all possible items that match, regardless of stock status
+        list($store, $string) = explode('@', $string);
+      }
+      else {
+        list($store, $string) = explode('@', $string);
+        if (is_numeric($store)) {
+          $store_nid = erp_id_to_nid('store', $store);
+        }
+        else {
+          $store =  node_load(array('type' => 'erp_store', 'title' => $store));
+          if ($store) {
+            $store_nid = $store->nid;
+          }
+        }
+      }
+    }
+    else {
+      // Provide default store if the user has one, otherwise no default
+      if (!$store_nid && $use_default_store) {
+        global $user;
+        if (isset($user->erp_store)) {
+          $store_nid = erp_id_to_nid('store', $user->erp_store);
+          if (!$store_nid) {
+            unset($store_nid);
+          }
+        }
+      }
+    }
+  }
+
+  // Take remaining string and build query
+  $words = explode(' ', check_plain($string));
+  foreach ($words as $word) {
+    $qstringlist[] = "LOWER(i.code) LIKE LOWER('%%". $word ."%%')";
+    $qstringlist[] = "LOWER(n.title) LIKE LOWER('%%". $word ."%%')";
+    $qstringlist[] = "i.barcode LIKE '%%". $word ."%%'";
+    if ($store_nid) {
+      $qstringlist[] = "LOWER(s.serial) LIKE LOWER('%%". $word ."%%')";
+    }
+    $all_strings[] = "(". implode(' OR ', $qstringlist) .")";
+    $stock_strings[] = "(". implode(' OR ', $qstringlist) .")";
+    $qstringlist = array();
+  }
+
+  $query = "SELECT *, i.sell_price AS sell_price, i.buy_price AS buy_price FROM {node} n LEFT JOIN {erp_item} i ON n.nid = i.nid ";
+  if ($store_nid) {
+    $query .= "LEFT JOIN {erp_stock} s ON s.stock_nid = i.nid ";
+  }
+  $query .= "WHERE n.type = 'erp_item' AND i.active = 1 ";
+
+  foreach (array('service', 'stock item') as $type) {
+    if ($type == 'stock item') {
+      if ($store_nid && variable_get('erp_invoice_serial', FALSE)) {
+        $extra[$type] = " i.in_stock = 1 AND s.sell_date = 0 AND store_nid = ". $store_nid ." ";
+      }
+
+      if ($stock_strings) {
+        $word_conditions = implode(' AND ', $stock_strings);
+        if ($word_conditions) {
+          if ($extra[$type]) {
+            $extra[$type] .= " AND ($word_conditions) ";
+          }
+          else {
+            $extra[$type] .= " ($word_conditions) ";
+          }
+        }
+      }
+    }
+    else {
+      $extra[$type] = " (i.item_type = 'service') ";
+      if ($all_strings) {
+        $word_conditions = implode(' AND ', $all_strings);
+        if ($word_conditions) {
+          $extra[$type] .= " AND ($word_conditions) ";
+        }
+      }
+    }
+  }
+
+  $query .= " AND ((". $extra['service'] .") OR (". $extra['stock item'] .")) ";
+
+  // Add supplier filter
+  if ($supplier) {
+    $query .= " AND i.supplier_nid = $supplier_nid";
+  }
+
+  $result = db_query_range($query, 0, variable_get('erp_item_autocomplete_count', 10));
+
+  // Build array to return
+  while ($item = db_fetch_object($result)) {
+    $desc = erp_item_desc_build($item, $type);
+    $matches[$desc] = $desc;
+  }
+
+  // Return array and exit
+  print drupal_to_js($matches);
+  exit();
+}
+
+/**
+ * Build the item description from the parts
+ *
+ * @param unknown_type $item
+ * @return unknown
+ */
+function erp_item_desc_build($item, $type = NULL) {
+  if ($item) {
+    if (module_exists('erp_supplier')) {
+      $supplier = node_load($item->supplier_nid);
+    }
+    if ($item->store_nid) {
+      $store = node_load($item->store_nid);
+    }
+    if ($item->serial || $item->store_nid) {
+      $item->code .= ' - #'. $store->title .'@'. $item->serial .'#';
+    }
+    $item->rrp_price = erp_currency(array_pop(module_invoke_all('erp_tax_inc_amount', $item->rrp_price)));
+    $item->sell_price = erp_currency(array_pop(module_invoke_all('erp_tax_inc_amount', $item->sell_price)));
+    $item->buy_price = erp_currency(array_pop(module_invoke_all('erp_tax_inc_amount', $item->buy_price)));
+    if ($type == 'buy') {
+      $code = check_plain($item->code) .' - '. check_plain($item->title) .' - '. check_plain($item->buy_price);
+    }
+    else {
+      $code = check_plain($item->code) .' - '. check_plain($item->title) .' - '. check_plain($item->sell_price);
+    }
+    if (module_exists('erp_supplier')) {
+      $code = check_plain($supplier->supplier_id) .':'. $code;
+    }
+    return $code;
+  }
+  else {
+    return '';
+  }
+}
+
+/**
+ * Splitup the item description
+ *
+ * @param unknown_type $desc
+ * @return unknown
+ */
+function erp_item_desc_breakup($desc) {
+
+  if (module_exists('erp_supplier')) {
+    // Get the supplier
+    $supplier = substr($desc, 0, strpos($desc, ':'));
+
+    // Get the item code
+    $code = substr($desc, strpos($desc, ':')+1, strpos($desc, ' - ') - strpos($desc, ':')-1);
+  }
+  else {
+    $code = substr($desc, 0, strpos($desc, ' - ') - strpos($desc, ':')-1);
+  }
+
+  // Strip supplier & code from desc
+  $desc = substr($desc, strpos($desc, ' - '), strlen($desc));
+
+  // Get the price and trim whitespace.
+  $price = trim(substr($desc, strripos($desc, ' - ')+3, strlen($desc)), ' ');
+
+  // Handle if price is chopped off due to short field (REMOVE WHEN FIXED)
+  if (!$price) {
+    $price = '';
+  }
+
+  // Strip the price from desc
+  $desc = substr($desc, 0, strripos($desc, ' - '));
+
+  // Strip the leading ' - ' from desc
+  $desc = substr($desc, 3, strlen($desc) - 3);
+
+  // Return it all though
+  return array($supplier, $code, $desc, $price);
+}
+
+function erp_item_view_list($node, $show_tax = FALSE) {
+  $header[] = t('Stock Code');
+  $header[] = t('Qty');
+  if ($node->type == 'erp_invoice') {
+    $header[] = t('Date');
+  }
+  $header[] = t('Desc');
+  if (module_exists('erp_stock') && !$node->printing) {
+    $header[] = t('Avail');
+  }
+  if (variable_get('erp_invoice_serial', FALSE) && ($node->type == 'erp_invoice' || $node->type == 'erp_cash_sale')) {
+    $header[] = t('Serial no.');
+  }
+  $header[] = t('Price');
+  $header[] = t('Line total');
+
+  $rows = array();
+
+  for ($i = 0 ; $i < count($node->entries['qty']) ; $i++) {
+    $row = array();
+
+    $item_node = node_load($node->entries['item'][$i]);
+    if ($item_node) {
+      $desc = check_plain($item_node->title);
+      if (user_access('item edit')) {
+        $code = l($item_node->code, 'node/'. $item_node->nid);
+      }
+      else {
+        $code = $item_node->code;
+      }
+    }
+    else {
+      $desc = "Unknown item node for ". $node->entries['item'][$i];
+    }
+    if ($item_node->full_desc && (trim($item_node->full_desc) != trim($item_node->title))) {
+      $desc .= '<br />'. $item_node->full_desc;
+    }
+    if ($node->entries['extra'][$i]) {
+      $desc .= '<br />'. $node->entries['extra'][$i];
+    }
+
+    $row[] = array('data' => $code, 'class' => 'item-code');
+    $row[] = array('data' => $node->entries['qty'][$i], 'class' => 'item-qty');
+    if ($node->type == 'erp_invoice') {
+      $row[] = array('data' => date_format_date(date_make_date($node->entries['completed_date'][$i], NULL, DATE_UNIX), 'custom', 'Y-m-d'), 'class' => 'item-date-completed');
+    }
+    $row[] = array('data' => $desc, 'class' => 'item-class');
+
+    if (module_exists('erp_stock') && !$node->printing) {
+      $avail = erp_stock_avail($node->entries['item'][$i]);
+      $row[] = array('data' => $avail, 'class' => 'item-avail');
+    }
+    if (variable_get('erp_invoice_serial', FALSE) && ($node->type == 'erp_invoice' || $node->type == 'erp_cash_sale')) {
+      $row[] = array('data' => $node->entries['serial'][$i]);
+    }
+
+    $row[] = array('data' => erp_currency($node->entries['price'][$i]), 'class' => 'item-amount');
+    $row[] = array('data' => erp_currency($node->entries['price'][$i] * $node->entries['qty'][$i]), 'class' => 'item-subtotal');
+    $rows[] = $row;
+
+    // Build a total price
+    $total_price += $node->entries['price'][$i] * $node->entries['qty'][$i];
+  }
+
+  $row = array_fill(0, count($header) - 2, array());
+  $row[] = array('data' => 'GST total: ', 'class' => 'tax-total-text');
+  $row[] = array('data' => erp_currency(array_pop(module_invoke_all('erp_tax_amount', $total_price))));
+  $rows[] = $row;
+
+  $row = array_fill(0, count($header) - 2, array());
+  $row[] = array('data' => "Total: ", 'class' => 'total-text');
+  $row[] = array('data' => erp_currency($total_price), 'class' => 'total-amount');
+
+  $rows[] = $row;
+  $output .= theme('table', $header, $rows, array('class' => 'item-list'));
+
+  return array($header, $rows, $total_price);
+}
+
+function erp_item_customer($nid) {
+  $nid = arg(3);
+
+  $header = array(
+                  array('data' => t('code'), 'field' => 'it.code'),
+                  array('data' => t('description'), 'field' => 'n.title'),
+                  array('data' => t('count'), 'field' => 'purchase_count'),
+                  array('data' => t('invoices'), 'field' => 'invoices'));
+
+  if (!$_REQUEST['order']) {
+    $_GET['order'] = 'count';
+    $_GET['sort'] = 'desc';
+  }
+
+  $sql = "SELECT id.item_nid, it.code, n.title, (count(id.item_nid) * id.qty)  as purchase_count FROM {erp_invoice_data} id INNER JOIN {erp_invoice} i ON i.invoice_id = id.invoice_id INNER JOIN {erp_item} it ON id.item_nid = it.nid INNER JOIN {node} n on it.nid = n.nid WHERE i.customer_nid = '$nid' AND it.item_type = 'stock item' GROUP BY id.item_nid ";
+
+  $result = pager_query($sql . tablesort_sql($header), 50);
+
+  while ($row = db_fetch_object($result)) {
+    $sql = "SELECT i.nid, i.invoice_id FROM {erp_invoice_data} id INNER JOIN {erp_invoice} i ON i.invoice_id = id.invoice_id INNER JOIN {erp_item} it ON id.item_nid = it.nid INNER JOIN {node} n on it.nid = n.nid WHERE id.item_nid = '". $row->item_nid ."' AND it.item_type = 'stock item' AND i.customer_nid = '$nid'";
+
+    $invoices_list = array();
+    $inv_result = db_query($sql);
+    while ($inv_rows = db_fetch_object($inv_result)) {
+      $invoices_list[] = l($inv_rows->invoice_id, 'node/'. $inv_rows->nid);
+    }
+    $invoices = implode(', ', $invoices_list);
+
+    $rows[] = array(array('data' => l($row->code, "node/$row->item_nid"),
+                          'class' => 'erp-item-code'),
+                    array('data' => $row->title,
+                          'class' => 'erp-item-title'),
+                    array('data' => $row->purchase_count,
+                          'class' => 'erp-item-purchase-count'),
+                    array('data' => $invoices));
+  }
+
+  if ($pager = theme('pager', NULL, $num, 0)) {
+    $rows[] = array(array('data' => $pager, 'colspan' => '3'));
+  }
+
+  $output = $rows ? '<fieldset><legend>'. t('Items Purchased') .'</legend>'. theme('table', $header, $rows) .'</fieldset>' : NULL;
+
+  return $output;
+}
+
+function erp_item_views_api() {
+  return array('api' => 2.0);
+}
+

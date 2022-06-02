@@ -1,0 +1,141 @@
+﻿
+MariaDB [task3]> select Dept_no , count(Dept_no), form Employee gropu by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'gropu by Dept_no' at line 1
+MariaDB [task3]> select Dept_no , count(Dept_no), from Employee group by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'from Employee group by Dept_no' at line 1
+MariaDB [task3]> select Dept_no, count(Dept_no), from Employee group by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'from Employee group by Dept_no' at line 1
+MariaDB [task3]> select Dept_no, count(Dept_no) from Employee group by Dept_no;
++---------+----------------+
+| Dept_no | count(Dept_no) |
++---------+----------------+
+|      10 |              1 |
+|      20 |              1 |
+|      30 |              1 |
+|      40 |              1 |
+|      50 |              1 |
+|      60 |              1 |
++---------+----------------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select job, count(E_job) form Employee group by E_job;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'Employee group by E_job' at line 1
+MariaDB [task3]> select job, count(E_job) from Employee group by E_job;
+ERROR 1054 (42S22): Unknown column 'job' in 'field list'
+MariaDB [task3]> select E_job, count(E_job) from Employee group by E_job;
++-----------+--------------+
+| E_job     | count(E_job) |
++-----------+--------------+
+| clerk     |            1 |
+| developer |            2 |
+| manager   |            1 |
+| marketing |            1 |
+| team lead |            1 |
++-----------+--------------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select Dept_no, sum(E_salary) from Employee by Dept_no;
+ERROR 1064 (42000): You have an error in your SQL syntax; check the manual that corresponds to your MariaDB server version for the right syntax to use near 'by Dept_no' at line 1
+MariaDB [task3]> select Dept_no, sum(E_salary) from Employee group by Dept_no;
++---------+---------------+
+| Dept_no | sum(E_salary) |
++---------+---------------+
+|      10 |          5000 |
+|      20 |          6000 |
+|      30 |          3000 |
+|      40 |         60000 |
+|      50 |          6000 |
+|      60 |         50000 |
++---------+---------------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select Dept_no, max(E_salary) from Employee group by Dept_no;
++---------+---------------+
+| Dept_no | max(E_salary) |
++---------+---------------+
+|      10 |          5000 |
+|      20 |          6000 |
+|      30 |          3000 |
+|      40 |         60000 |
+|      50 |          6000 |
+|      60 |         50000 |
++---------+---------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_job, sum(E_salary) from Employee group by E_job;
++-----------+---------------+
+| E_job     | sum(E_salary) |
++-----------+---------------+
+| clerk     |         50000 |
+| developer |         11000 |
+| manager   |          6000 |
+| marketing |          3000 |
+| team lead |         60000 |
++-----------+---------------+
+5 rows in set (0.001 sec)
+
+MariaDB [task3]> select E_job, sum(E_salary) from Employee;
++-----------+---------------+
+| E_job     | sum(E_salary) |
++-----------+---------------+
+| developer |        130000 |
++-----------+---------------+
+1 row in set (0.001 sec)
+
+MariaDB [task3]> select E_job, min(E_salary) from Employee group by E_job;
++-----------+---------------+
+| E_job     | min(E_salary) |
++-----------+---------------+
+| clerk     |         50000 |
+| developer |          5000 |
+| manager   |          6000 |
+| marketing |          3000 |
+| team lead |         60000 |
++-----------+---------------+
+5 rows in set (0.001 sec)
+
+
+
+
+MariaDB [task3]> select upper(Ename) from Employee;
++--------------+
+| upper(Ename) |
++--------------+
+| RONAK        |
+| JATIN        |
+| SOMAY        |
+| MRADUL       |
+| RAM          |
+| JATIN        |
++--------------+
+6 rows in set (0.004 sec)
+
+MariaDB [task3]> select lower(Ename) from Employee;
++--------------+
+| lower(Ename) |
++--------------+
+| ronak        |
+| jatin        |
+| somay        |
+| mradul       |
+| ram          |
+| jatin        |
++--------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> select length(Ename) from Employee;
++---------------+
+| length(Ename) |
++---------------+
+|             5 |
+|             5 |
+|             5 |
+|             6 |
+|             3 |
+|             5 |
++---------------+
+6 rows in set (0.001 sec)
+
+MariaDB [task3]> 
+
+

@@ -1,0 +1,131 @@
+<?php
+// $Id: erp_purchase_order.install,v 1.4.2.11 2010/03/09 10:21:08 simon Exp $
+
+/**
+ * @file
+ * Install, update and uninstall functions for the erp_purchase_order module.
+ */
+
+function erp_purchase_order_install() {
+  drupal_install_schema('erp_purchase_order');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // so if its a new install, mark it as done.
+  db_query("UPDATE {system} SET schema_version = 6003 WHERE name = 'erp_purchase_order'");
+}
+
+function erp_purchase_order_schema() {
+  $schema['erp_purchase_order'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'purchase_order_id' => array('type' => 'serial', 'not null' => TRUE, 'disp-width' => '10'),
+      'purchase_order_status' => array('type' => 'char', 'length' => '1', 'not null' => TRUE, 'default' => ''),
+      'customer_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'supplier_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'total' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20')),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'purchase_order_id' => array('purchase_order_id')),
+  );
+
+  $schema['erp_purchase_order_data'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'line' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'item_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'extra' => array('type' => 'text', 'size' => 'medium'),
+      'price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'qty' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '10')),
+    'primary key' => array('nid', 'line'),
+  );
+
+  return $schema;
+}
+
+function erp_purchase_order_update_6001() {
+  $ret = array();
+
+  // Add line ability to allow for duplicates and stuff
+  db_add_field($ret, 'erp_purchase_order_data', 'line', array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'));
+
+  // Fix po id incrementing
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} DROP PRIMARY KEY");
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} ADD UNIQUE (purchase_order_id)");
+
+  $high_purchase_order = db_result(db_query("SELECT MAX(purchase_order_id) FROM {erp_purchase_order}"));
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} CHANGE COLUMN purchase_order_id purchase_order_id INT(10) NOT NULL auto_increment");
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} AUTO_INCREMENT = ". $high_purchase_order++);
+
+  // Now look through all the purchase orders and update the erp_purchase_order_data table with their nid
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order_data} ADD COLUMN nid INT(10) NOT NULL FIRST");
+
+  $result = db_query("SELECT nid, purchase_order_id FROM {erp_purchase_order} ORDER BY purchase_order_id ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_purchase_order_data} SET nid = ". $row['nid'] ." WHERE purchase_order_id = ". $row['purchase_order_id'];
+    $ret[] = update_sql($sql);
+  }
+
+  // Need to loop through all PO data and set "line" numbers.
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order_data} DROP PRIMARY KEY");
+  $result = db_query("SELECT * FROM {erp_purchase_order} ORDER by nid ASC");
+  while ($row = db_fetch_array($result)) {
+    // Retrieve all po data for this nid
+    $result2 = db_query("SELECT * FROM {erp_purchase_order_data} WHERE nid = %d", $row['nid']);
+
+    // Loop through assigning an ascending line number to each row
+    $line = 0;
+    $rows = array();
+    while ($row2 = db_fetch_array($result2)) {
+      $row2['line'] = $line++;
+      $rows[] = $row2;
+    }
+
+    // Now write them back
+    db_query("DELETE FROM {erp_purchase_order_data} WHERE nid = %d", $row['nid']);
+    foreach ($rows as $row2) {
+      db_query("INSERT INTO {erp_purchase_order_data} (nid, item_nid, extra, price, qty, line) VALUES(%d, %d, '%s', %f, %f, %d)",
+        $row2['nid'], $row2['item_nid'], $row2['extra'], $row2['price'], $row2['qty'], $row2['line']
+      );
+    }
+  }
+
+  // Fix the purchase order data key to no longer require purchase_order_id in the data table
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order_data} ADD PRIMARY KEY (nid,line)");
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order_data} DROP purchase_order_id");
+
+  // Add the purchase order id column for the node id
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} CHANGE COLUMN supplier_id supplier_nid INT(10) AFTER customer_id");
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} CHANGE COLUMN customer_id customer_nid INT(10) AFTER purchase_order_status");
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} ADD COLUMN goods_receive_nid INT(10) AFTER purchase_order_id");
+
+  $result = db_query("SELECT nid, goods_receive_id FROM {erp_purchase_order}");
+  while ($row = db_fetch_array($result)) {
+    $nid = erp_id_to_nid('goods_receive', $row['goods_receive_id']);
+    if ($nid) {
+      $ret[] = update_sql("UPDATE {erp_purchase_order} SET goods_receive_nid = ". $nid ." WHERE nid = ". $row['nid']);
+    }
+  }
+
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} DROP COLUMN goods_receive_id");
+
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} CHANGE COLUMN total total FLOAT(20,5) NOT NULL DEFAULT 0");
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order_data} CHANGE COLUMN price price FLOAT(20,5) NOT NULL DEFAULT 0");
+
+  return $ret;
+}
+
+function erp_purchase_order_update_6002() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_purchase_order} DROP COLUMN goods_receive_nid");
+
+  return $ret;
+}
+
+function erp_purchase_order_update_6003() {
+  $ret = array();
+
+  db_change_field($ret, 'erp_purchase_order_data', 'extra', 'extra', array('type' => 'text', 'size' => 'medium'));
+
+  return $ret;
+}

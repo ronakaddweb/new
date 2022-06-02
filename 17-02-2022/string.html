@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>String</title>
+</head>
+<body>
+    <p>STRING</p>
+    <p id="demo3"> Ronak Jain</p>
+    <button onclick="myFunction()">Try it</button>
+
+<p id="demo"></p>
+<p id="demo1"></p>
+<p id="demo2">Hello World!</p>
+
+<script>
+let text = "RONAK JAIN";"<br>"
+document.getElementById("demo").innerHTML = text.length;
+
+
+
+// slice Mehtod
+let str = "Apple, Banana, Kiwi";
+document.getElementById("demo1").innerHTML = str.slice(7,13); 
+
+// Substring 
+let str1 = "Apple, Banana, Kiwi";
+document.getElementById("demo2").innerHTML = str1.substring(14,19);
+
+
+// to uppercase
+function myFunction() {
+  let text = document.getElementById("demo3").innerHTML;
+  document.getElementById("demo3").innerHTML = text.toUpperCase();
+}
+</script>
+</body>
+</html>

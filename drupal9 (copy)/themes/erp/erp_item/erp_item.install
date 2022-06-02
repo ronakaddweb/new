@@ -1,0 +1,91 @@
+<?php
+
+function erp_item_install() {
+  drupal_install_schema('erp_item');
+
+  // The 6001 updates only need to be done for v4/5 installs,
+  // If its a new install, mark it as done.
+  db_query("UPDATE {system} set schema_version = 6001 WHERE name = 'erp_item'");
+}
+
+function erp_item_schema() {
+  $schema['erp_item'] = array(
+    'fields' => array(
+      'nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'code' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'supplier_nid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0, 'disp-width' => '10'),
+      'supp_code' => array('type' => 'varchar', 'length' => '128', 'not null' => TRUE, 'default' => ''),
+      'buy_price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'rrp_price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'sell_price' => array('type' => 'float', 'not null' => TRUE, 'default' => 0, 'disp-width' => '20'),
+      'barcode' => array('type' => 'varchar', 'length' => '40', 'not null' => TRUE, 'default' => ''),
+      'active' => array('type' => 'int', 'size' => 'tiny', 'not null' => FALSE, 'disp-width' => '1'),
+      'item_type' => array('type' => 'varchar', 'length' => '50', 'not null' => FALSE, 'default' => ''),
+      'full_desc' => array('type' => 'text', 'not null' => FALSE),
+      'item_locked' => array('type' => 'char', 'length' => '1', 'not null' => TRUE, 'default' => ''),
+      'in_stock' => array('type' => 'char', 'length' => '1', 'not null' => TRUE, 'default' => '')
+    ),
+    'primary key' => array('nid'),
+    'indexes' => array(
+      'active' => array('active'),
+      'buy_price' => array('buy_price'),
+      'code' => array('code'),
+      'our_price' => array('sell_price'),
+      'supplier_nid' => array('supplier_nid'),
+      'supp_code' => array('supp_code')),
+  );
+
+  return $schema;
+}
+
+function erp_item_update_6001() {
+  $ret = array();
+
+  // Add the supplier id column for the node id
+  $ret[] = update_sql("ALTER TABLE {erp_item} ADD COLUMN supplier_nid INT(10) AFTER nid");
+
+  // Now loop through all the suppliers and update the erp_item with their nid
+  $result = db_query("SELECT nid, supplier_code FROM {erp_supplier} ORDER BY supplier_code ASC");
+  while ($row = db_fetch_array($result)) {
+    $sql = "UPDATE {erp_item} SET supplier_nid = ". $row['nid'] ." WHERE supplier_code = ". $row['supplier_code'];
+    $ret[] = update_sql($sql);
+  }
+
+  // Finally, delete the supplier_code column
+  $ret[] = update_sql("ALTER TABLE {erp_item} DROP COLUMN supplier_code");
+
+  // Add the barcode field
+  $ret[] = update_sql("ALTER TABLE {erp_item} ADD COLUMN barcode VARCHAR(40) AFTER code");
+  $ret[] = update_sql("ALTER TABLE {erp_item} CHANGE COLUMN buy_price buy_price FLOAT(20,5) NOT NULL DEFAULT 0");
+  $ret[] = update_sql("ALTER TABLE {erp_item} CHANGE COLUMN rrp_price rrp_price FLOAT(20,5) NOT NULL DEFAULT 0");
+  $ret[] = update_sql("ALTER TABLE {erp_item} CHANGE COLUMN sell_price sell_price FLOAT(20,5) NOT NULL DEFAULT 0");
+
+  return $ret;
+}
+
+function erp_item_update_6002() {
+  $ret = array();
+
+  db_add_field($ret, 'erp_item', 'in_stock', array('type' => 'char', 'length' => '1', 'not null' => TRUE, 'default' => ''));
+
+  if (module_exists('erp_stock')) {
+    $result = db_query("SELECT DISTINCT stock_nid FROM {erp_stock} WHERE sell_date = 0");
+    while ($row = db_fetch_array($result)) {
+      $sql = "UPDATE {erp_item} SET in_stock = 1 WHERE nid = ". $row['stock_nid'];
+      $ret[] = update_sql($sql);
+    }
+  }
+
+  return $ret;
+}
+
+function erp_item_update_6003() {
+  $ret = array();
+
+  $ret[] = update_sql("ALTER TABLE {erp_item} ADD INDEX (in_stock) ");
+  $ret[] = update_sql("ALTER TABLE {erp_item} ADD INDEX (item_type) ");
+  $ret[] = update_sql("ALTER TABLE {erp_item} ADD INDEX (active) ");
+  $ret[] = update_sql("ALTER TABLE {erp_item} ADD INDEX (supplier_nid) ");
+
+  return $ret;
+}
